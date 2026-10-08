@@ -1280,5 +1280,9 @@
   "Type a receipt number, e.g. HH/2026-27/0010.": "रसीद नंबर लिखें, जैसे HH/2026-27/0010।",
   "A particular month…": "कोई एक महीना…",
   "Nothing matches these filters. Payments are listed by the date they were received. Try All months.": "इन फ़िल्टर से कुछ नहीं मिला। भुगतान प्राप्ति की तारीख़ के अनुसार दिखते हैं। 'सभी महीने' आज़माएँ।",
-  "Payments and expenses will show up here. Money not yet paid is on the Dues page.": "भुगतान और ख़र्च यहाँ दिखेंगे। जो पैसा अभी बाक़ी है वह बकाया (Dues) पेज पर है।"
+  "Payments and expenses will show up here. Money not yet paid is on the Dues page.": "भुगतान और ख़र्च यहाँ दिखेंगे। जो पैसा अभी बाक़ी है वह बकाया (Dues) पेज पर है।",
+  "Balance went up by": "बैलेंस बढ़ा",
+  "Balance went down by": "बैलेंस घटा",
+  "Received for events": "इवेंट के लिए मिला",
+  "\"Received\" is money that came in during this month, including late payments for earlier months. It is not extra money.": "\"मिला\" वह पैसा है जो इस महीने आया, जिसमें पिछले महीनों के देर से हुए भुगतान भी शामिल हैं। यह अतिरिक्त पैसा नहीं है।"
 }
