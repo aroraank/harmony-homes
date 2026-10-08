@@ -1,0 +1,27 @@
+{
+  "name": "harmony-homes",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Harmony Homes — society funds, dues, events and notices PWA",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @harmony/web",
+    "build": "npm run build -w @harmony/web",
+    "preview": "npm run preview -w @harmony/web",
+    "test": "npm run test -w @harmony/shared && npm run test -w @harmony/web",
+    "typecheck": "npm run typecheck -w @harmony/shared && npm run typecheck -w @harmony/web",
+    "lint": "npm run lint -w @harmony/web",
+    "format": "prettier --write .",
+    "test:db": "bash scripts/test-db.sh",
+    "test:e2e": "npm run test:e2e -w @harmony/web"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}

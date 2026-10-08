@@ -1,0 +1,7 @@
+/* Static splash shown before the app script loads (keeps first paint fast on slow phones) */
+.boot{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;color:#fff;
+background:radial-gradient(120% 90% at 100% 0%,rgba(190,242,100,.35) 0%,transparent 45%),radial-gradient(90% 80% at 0% 100%,rgba(15,118,110,.55) 0%,transparent 60%),linear-gradient(135deg,#059669 0%,#047857 55%,#065f46 100%);
+font-family:"Plus Jakarta Sans Variable",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.boot img{width:72px;height:72px;border-radius:20px;box-shadow:0 0 0 1px rgba(255,255,255,.3)}
+.boot-title{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em}
+.boot-sub{margin:0;max-width:320px;font-size:16px;line-height:1.5;opacity:.88}
