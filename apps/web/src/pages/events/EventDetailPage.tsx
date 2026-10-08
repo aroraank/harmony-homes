@@ -200,7 +200,7 @@ export default function EventDetailPage() {
         <StatTile label={t('Spent')} value={formatINR(r.spent_paise)} tone="bad" />
         <StatTile label={t('Remaining to collect')} value={formatINR(r.remaining_to_collect_paise)} tone={r.remaining_to_collect_paise ? 'warn' : 'default'} />
         <StatTile label={net >= 0 ? t('Surplus') : t('Shortfall')} value={<Money paise={net} sign tone="auto" />} />
-        <StatTile label={t('Fund balance')} value={formatINR(r.balance_paise)} />
+        {r.balance_paise !== net && <StatTile label={t('Fund balance')} value={formatINR(r.balance_paise)} />}
       </div>
 
       {canManage && (
