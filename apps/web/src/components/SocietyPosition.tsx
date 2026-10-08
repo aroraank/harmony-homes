@@ -8,7 +8,7 @@ import { rpc } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { SectionTitle } from '@/components/PageHeader';
 
-export type Fund = { event_id?: string | null; ord?: string; earlier_balance_paise?: number; id: string; name: string; kind: string; scope_label: string | null; balance_paise: number; pending_paise: number; advance_paise: number };
+export type Fund = { counted?: boolean; event_id?: string | null; ord?: string; earlier_balance_paise?: number; id: string; name: string; kind: string; scope_label: string | null; balance_paise: number; pending_paise: number; advance_paise: number };
 export type Scoped = { label: string; balance_paise: number; pending_paise: number; advance_paise: number };
 export type Pos = { funds: Fund[]; totals: { balance_paise: number; pending_paise: number; overdue_paise: number; advance_paise: number }; scoped: Scoped[] };
 
@@ -38,7 +38,7 @@ export function SocietyPosition() {
     ...(old.length ? [{ id: 'earlier', name: `${t('Earlier months')} (${periodLabel(ords[0]!)}${ords.length > 1 && ords[0] !== ords[ords.length - 1] ? ' – ' + periodLabel(ords[ords.length - 1]!) : ''})`, kind: 'event', scope_label: null, balance_paise: sum('balance_paise'), pending_paise: sum('pending_paise'), advance_paise: sum('advance_paise') } as Fund] : []),
   ];
   const TIPS = {
-    bal: t('What is left in the event funds after spending: collections for September 2026 onwards minus expenses. Earlier months are counted as ₹0.'),
+    bal: t('What is left after spending, counting September 2026 collections and later. Money received for August 2026 and earlier months is not counted.'),
     pend: t('Amount billed to flats that has not been paid yet.'),
     adv: t('Money paid by flats beyond what is billed so far. It is adjusted against their future dues.'),
   } as const;
