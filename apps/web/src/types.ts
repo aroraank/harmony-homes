@@ -219,6 +219,7 @@ export interface Defaulter {
   events_overdue: number;
   oldest_due_date: string;
   periods: string[];
+  items?: { label: string; pending_paise: number; due_date: string }[];
 }
 
 export interface EventRow {

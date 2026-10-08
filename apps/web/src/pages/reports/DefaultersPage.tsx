@@ -77,9 +77,13 @@ export default function DefaultersPage() {
                   </button>
                   {open === d.unit_id && (
                     <div className="border-t px-3.5 py-3">
-                      <ul className="space-y-1.5 text-[13px]">
-                        {(d.periods ?? []).map((p) => (
-                          <li key={p} className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-rose-500" />{p}</li>
+                      <ul className="space-y-2 text-[13px]">
+                        {(d.items ?? (d.periods ?? []).map((l) => ({ label: l, pending_paise: null as number | null, due_date: '' }))).map((it) => (
+                          <li key={it.label} className="flex items-center gap-2">
+                            <span className="size-1.5 shrink-0 rounded-full bg-rose-500" />
+                            <span className="min-w-0 flex-1">{it.label}</span>
+                            {it.pending_paise !== null && <Money paise={it.pending_paise} className="font-bold text-debit" />}
+                          </li>
                         ))}
                       </ul>
                       <Link to={`/reports/unit/${d.unit_id}`} className="mt-3 inline-block text-[13px] font-bold text-primary">{t('Full statement')} →</Link>
