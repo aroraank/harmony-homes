@@ -24,9 +24,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { currentPeriod, formatDate, formatINR, periodLabel } from '@harmony/shared';
-import { rpc } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { useMember } from '@/lib/auth';
-import { useDashboard, useNextMeeting, useSettings } from '@/lib/queries';
+import { unwrap, useDashboard, useNextMeeting, useSettings } from '@/lib/queries';
 import { enablePush, pushSupported } from '@/lib/push';
 import { useInstallPrompt } from '@/lib/install';
 import { getLocal, setLocal } from '@/lib/storage';
@@ -38,7 +38,7 @@ import { SectionTitle } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ReminderCards } from './reminders/ReminderCards';
-import type { Dashboard, MonthReport } from '@/types';
+import type { Dashboard } from '@/types';
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -122,12 +122,22 @@ function BalanceHero() {
   const { t } = useTranslation();
   const m = useMember();
   const cur = currentPeriod();
-  const recv = useQuery({
-    queryKey: ['monthReport', m.societyId, cur, 'all-received'],
-    queryFn: () => rpc<MonthReport>('month_report', { p_society: m.societyId, p_period: cur, p_fund_id: null }),
-  });
-  const received = recv.data ? recv.data.maintenance_collected_paise + recv.data.event_collected_paise : null;
   const pos = usePosition();
+  const monthStart = `${cur}-01`;
+  const recv = useQuery({
+    queryKey: ['monthReceived', m.societyId, cur],
+    queryFn: async () =>
+      unwrap<{ fund_id: string; signed_paise: number }[]>(
+        await supabase.from('v_ledger').select('fund_id, signed_paise').eq('society_id', m.societyId)
+          .in('category', ['maintenance', 'event_contribution']).gte('entry_date', monthStart),
+      ),
+  });
+  const byFund = new Map<string, number>();
+  for (const r of recv.data ?? []) byFund.set(r.fund_id, (byFund.get(r.fund_id) ?? 0) + r.signed_paise);
+  const fundById = new Map((pos.data?.funds ?? []).map((f) => [f.id, f]));
+  const currentRows = [...byFund].filter(([id, v]) => v !== 0 && fundById.get(id)?.counted !== false).map(([id, v]) => ({ name: fundById.get(id)?.name ?? t('Other'), v }));
+  const earlier = [...byFund].filter(([id]) => fundById.get(id)?.counted === false).reduce((s, [, v]) => s + v, 0);
+  const received = currentRows.reduce((s, r) => s + r.v, 0) + earlier;
   const p = pos.data;
   const overallFunds = (p?.funds ?? []).filter((f) => !f.scope_label && f.balance_paise !== 0);
   const scopedChips = (p?.scoped ?? []).filter((g) => g.balance_paise !== 0);
@@ -139,12 +149,25 @@ function BalanceHero() {
           <Wallet className="size-4" /> {t('Society surplus')}
         </div>
         <p className="tabular mt-1 text-[38px] font-extrabold leading-none tracking-tight">{p ? formatINR(p.totals.balance_paise) : '—'}</p>
-        <p className="mt-1.5 text-[12.5px] text-white/75">{t('Left in the funds for all flats after spending, from September 2026 onwards.')}</p>
-        {received !== null && received > 0 && (
-          <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12.5px] font-semibold">
-            {t('Received this month')}: <span className="tabular">{formatINR(received)}</span>
-            <span className="block font-normal text-white/75">{t('includes payments for earlier months that were pending')}</span>
-          </p>
+        <p className="mt-1.5 text-[12.5px] text-white/75">{t('Counts September 2026 collections and later. August and earlier months are not included.')}</p>
+        {received > 0 && (
+          <div className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12.5px]">
+            <p className="font-semibold">
+              {t('Received this month')}: <span className="tabular">{formatINR(received)}</span>
+            </p>
+            {currentRows.map((r) => (
+              <p key={r.name} className="flex justify-between gap-3 text-white/85">
+                <span className="truncate">{r.name}</span>
+                <span className="tabular">{formatINR(r.v)}</span>
+              </p>
+            ))}
+            {earlier > 0 && (
+              <p className="flex justify-between gap-3 text-white/85">
+                <span>{t('Earlier months (not counted in surplus)')}</span>
+                <span className="tabular">{formatINR(earlier)}</span>
+              </p>
+            )}
+          </div>
         )}
         {(overallFunds.length > 0 || scopedChips.length > 0) && (
           <div className="mt-4 flex flex-wrap gap-2">
