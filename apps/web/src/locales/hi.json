@@ -1141,6 +1141,8 @@
   "Publish this month": "इस महीने प्रकाशित करें",
   "Publish this month’s event now": "इस महीने का इवेंट अभी प्रकाशित करें",
   "Published": "प्रकाशित",
+  "Collections": "संग्रह",
+  "Load more ({{n}} more)": "और दिखाएँ ({{n}} और)",
   "Recent events": "हाल के इवेंट",
   "Recurring": "आवर्ती",
   "Recurring events": "आवर्ती इवेंट",

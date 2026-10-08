@@ -1,20 +1,23 @@
 -- Harmony Homes — one-time load of the Security guard collection history (Feb 2026 → Sep 2026).
--- Run ONCE in the Supabase SQL editor, after migrations up to 0008 are applied.
+-- Run in the Supabase SQL editor after the database migrations (up to 0009) are applied.
+-- If an earlier run of this script exists and nothing real has been recorded on top of it, that load is
+-- removed first (and logged), then everything is loaded again — so it is safe to run again after a correction.
 --
 -- What it records (from the society tally of 8 Oct 2026):
---   * the recurring event "Security guard salary" (₹15,000 a month, 30 flats × ₹500, due on the 7th of the NEXT month)
+--   * the recurring event "Security guard salary" (₹24,000 a month = 30 flats × ₹800, due on the 7th of the NEXT month)
 --   * Feb–Aug 2026: ONLY the arrears that are still pending (one event per month, other flats marked
 --     "Paid before tracking began"). Money collected earlier is deliberately not tracked.
 --   * Sep 2026: all 30 flats are billed and the 21 payments received are recorded as real ledger entries
 --   * P10-SF also paid Aug 2026 (received together with Sep) — recorded as a payment against the Aug event
 --   * the daily job keeps publishing Oct 2026 onwards by itself
--- Safe to re-run: it stops if the series already exists. Nobody is notified by this script.
+-- Monthly maintenance dues are switched off (the recurring event replaces them) and any unpaid ones are removed,
+-- so nobody is billed twice. Nobody is notified by this script.
 
 do $$
 declare
   c_slug      constant text   := 'plot-colony';        -- society slug
   c_title     constant text   := 'Security guard salary';
-  c_share     constant bigint := 50000;                -- ₹500 per flat, in paise
+  c_share     constant bigint := 80000;                -- ₹800 per flat, in paise
   c_start     constant text   := '2026-02';
   c_last      constant text   := '2026-09';
   c_mode      constant text   := 'cash';               -- how the Sep payments were received
@@ -34,15 +37,40 @@ declare
 
   v_society uuid; v_series uuid; v_rounding bigint; v_start timestamptz := now();
   v_period text; v_unit record; v_owes boolean; v_exp int; v_event uuid; v_fund uuid; v_total bigint; v_due date; v_n int := 0;
-  v_missing text;
+  v_missing text; v_old uuid; v_events uuid[]; v_funds uuid[];
 begin
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'event_series' and column_name = 'due_month_offset') then
-    raise exception 'The latest database update is missing. In your project folder run:  npx supabase db push   (migrations 0007 and 0008), then run this script again.';
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'event_series' and column_name = 'due_month_offset')
+     or not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'society_settings' and column_name = 'monthly_dues_enabled') then
+    raise exception 'The latest database update is missing. In your project folder run:  npx supabase db push   (migrations 0007, 0008 and 0009), then run this script again.';
   end if;
   select id into v_society from societies where slug = c_slug;
   if v_society is null then raise exception 'Society % not found', c_slug; end if;
-  if exists (select 1 from event_series where society_id = v_society and title = c_title) then
-    raise exception 'The recurring event "%" already exists — nothing was changed.', c_title;
+  select id into v_old from event_series where society_id = v_society and title = c_title;
+  if v_old is not null then
+    select array_agg(id), array_agg(fund_id) into v_events, v_funds from events where series_id = v_old;
+    if exists (select 1 from ledger_entries where fund_id = any(v_funds)
+                and (created_by is not null or coalesce(note, '') not like 'Recorded from the society tally%')) then
+      raise exception 'Real entries have been recorded on top of the earlier load, so it cannot be replaced automatically. Nothing was changed.';
+    end if;
+    perform audit_append(v_society, 'history_reload', 'event_series', v_old::text,
+      jsonb_build_object('events', coalesce(array_length(v_events, 1), 0), 'ledger_entries', (select count(*) from ledger_entries where fund_id = any(v_funds))),
+      jsonb_build_object('reason', 'Earlier load replaced with corrected amounts'));
+    alter table public.due_allocations disable trigger user;
+    alter table public.ledger_entries disable trigger user;
+    delete from due_allocations where due_id in (select id from dues where event_id = any(v_events));
+    delete from ledger_entries where fund_id = any(v_funds);
+    alter table public.due_allocations enable trigger user;
+    alter table public.ledger_entries enable trigger user;
+    delete from dues where event_id = any(v_events);
+    update events set fund_id = null where id = any(v_events);
+    delete from event_units where event_id = any(v_events);
+    delete from funds where event_id = any(v_events);
+    delete from events where id = any(v_events);
+    delete from event_series where id = v_old;
+    if not exists (select 1 from ledger_entries where society_id = v_society) then
+      delete from receipt_counters where society_id = v_society;   -- numbering starts again from 1
+    end if;
+    raise notice 'Earlier load removed.';
   end if;
   select string_agg(code, ', ') into v_missing from unnest(v_never || array(select jsonb_object_keys(v_partial)) || array(select jsonb_object_keys(v_late))) code
    where not exists (select 1 from units where society_id = v_society and units.code = code);
@@ -84,7 +112,7 @@ begin
             'all', v_total, v_rounding, 30, v_exp, public.event_share_paise(v_total, v_exp, v_rounding), v_due, v_series, v_period)
     returning id into v_event;
     if (select per_unit_share_paise from events where id = v_event) <> c_share then
-      raise exception 'Per-flat share is not ₹500 for % (check the rounding setting).', v_period;
+      raise exception 'Per-flat share is not ₹800 for % (check the rounding setting).', v_period;
     end if;
     insert into event_units (event_id, unit_id, society_id, expected, exclusion_reason)
     select v_event, u.id, v_society, (o.unit_id is not null), case when o.unit_id is null then 'Paid before tracking began' end
@@ -104,6 +132,11 @@ begin
     end loop;
     v_period := to_char(public.period_start(v_period) + interval '1 month', 'YYYY-MM');
   end loop;
+
+  -- the recurring event replaces monthly maintenance billing: switch it off and drop unpaid monthly dues
+  update society_settings set monthly_dues_enabled = false where society_id = v_society;
+  delete from dues d where d.society_id = v_society and d.due_type = 'monthly'
+     and not exists (select 1 from due_allocations a where a.due_id = d.id);
 
   -- nobody is told about an old load
   delete from notifications where society_id = v_society and created_at >= v_start and kind in ('event_due', 'payment_received', 'surplus_payment');

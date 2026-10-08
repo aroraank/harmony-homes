@@ -778,6 +778,17 @@ do $$ declare v jsonb; begin
   if v::text like '%error%' then raise exception using errcode = 'TF001', message = 'TEST FAIL: daily jobs ' || v; end if;
 end $$;
 
+\echo '27. Monthly dues switch and last-month collection progress'
+:as_owner
+do $$ declare v_soc uuid; v jsonb; begin
+  select id into v_soc from public.societies limit 1;
+  update public.society_settings set monthly_dues_enabled = false where society_id = v_soc;
+  v := public.run_daily_jobs();
+  if v::text like '%error%' then raise exception using errcode = 'TF001', message = 'TEST FAIL: daily jobs with monthly dues off ' || v; end if;
+  update public.society_settings set monthly_dues_enabled = true where society_id = v_soc;
+  perform 1;
+end $$;
+
 :as_owner
 drop function public._tv(text);
 drop table public._t;

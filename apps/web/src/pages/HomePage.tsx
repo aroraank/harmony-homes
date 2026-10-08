@@ -1,5 +1,6 @@
 import { MyPending } from '@/components/MyPending';
-import { RecentEvents } from '@/components/RecentEvents';
+import { CollectionsList } from '@/components/CollectionsList';
+import { SeriesMonthCard } from '@/components/SeriesMonthCard';
 import { SocietyPosition } from '@/components/SocietyPosition';
 import { SurplusBoard } from '@/components/SurplusBoard';
 import { useState } from 'react';
@@ -12,7 +13,6 @@ import {
   BadgeCheck,
   BellRing,
   CalendarClock,
-  ChevronRight,
   ClipboardList,
   Download,
   FileText,
@@ -25,7 +25,7 @@ import {
 import { toast } from 'sonner';
 import { formatDate, formatINR, periodLabel } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
-import { useDashboard, useNextMeeting } from '@/lib/queries';
+import { useDashboard, useNextMeeting, useSettings } from '@/lib/queries';
 import { enablePush, pushSupported } from '@/lib/push';
 import { useInstallPrompt } from '@/lib/install';
 import { getLocal, setLocal } from '@/lib/storage';
@@ -42,6 +42,8 @@ import type { Dashboard } from '@/types';
 export default function HomePage() {
   const { t } = useTranslation();
   const m = useMember();
+  const settings = useSettings(m.societyId);
+  const monthlyOn = settings.data?.monthly_dues_enabled !== false;
   const q = useDashboard(m.societyId);
 
   if (q.isLoading && !q.data)
@@ -66,45 +68,14 @@ export default function HomePage() {
       <BalanceHero d={d} />
       {d.mine && <MyFlatCard d={d} />}
       {d.mine && <MyPending unitId={d.mine.unit_id} />}
-      {d.admin && <AdminAttention d={d} />}
+      {d.admin && <AdminAttention d={d} monthlyOn={monthlyOn} />}
+      {monthlyOn ? <MonthProgress d={d} /> : <SeriesMonthCard />}
+      <CollectionsList />
       <SocietyPosition />
       <SurplusBoard />
-      <MonthProgress d={d} />
       <ReminderCards compact />
       <NextMeetingCard />
       <EnableExtras />
-
-      <RecentEvents />
-
-      {d.events.length > 0 && (
-        <section>
-          <SectionTitle action={<Link to="/events" className="text-[13px] font-semibold text-primary">{t('All events')}</Link>}>
-            {t('Active collections')}
-          </SectionTitle>
-          <div className="space-y-2.5">
-            {d.events.slice(0, 3).map((e) => {
-              const pct = Math.min(100, Math.round((e.collected_paise / Math.max(1, e.target_paise)) * 100));
-              return (
-                <Link key={e.id} to={`/events/${e.id}`} className="block rounded-2xl border bg-card p-4 shadow-card transition-colors hover:bg-secondary/50">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate font-semibold">{e.title}</p>
-                    <ChevronRight className="size-4 text-muted-foreground" />
-                  </div>
-                  <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                    {t('{{amount}} per flat · due {{date}}', { amount: formatINR(e.per_unit_share_paise), date: formatDate(e.due_date) })}
-                  </p>
-                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-                    <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400" style={{ width: `${pct}%` }} />
-                  </div>
-                  <p className="tabular mt-1.5 text-[12.5px]">
-                    <strong>{formatINR(e.collected_paise)}</strong> <span className="text-muted-foreground">/ {formatINR(e.target_paise)} · {pct}%</span>
-                  </p>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
 
       {d.fixed_expenses.length > 0 && (
         <section>
@@ -219,12 +190,12 @@ function MyFlatCard({ d }: { d: Dashboard }) {
   );
 }
 
-function AdminAttention({ d }: { d: Dashboard }) {
+function AdminAttention({ d, monthlyOn }: { d: Dashboard; monthlyOn: boolean }) {
   const { t } = useTranslation();
   const m = useMember();
   const a = d.admin!;
   const items = [
-    !a.dues_generated && m.can('generate_dues')
+    monthlyOn && !a.dues_generated && m.can('generate_dues')
       ? { to: '/admin/dues', icon: <CalendarClock />, label: t('Generate dues for {{m}}', { m: periodLabel(d.period) }), n: 0, urgent: true }
       : null,
     a.pending_claims ? { to: '/admin/claims', icon: <BadgeCheck />, label: t('Payment claims to verify'), n: a.pending_claims } : null,

@@ -323,6 +323,7 @@ export interface Settings {
   start_month: string;
   share_rounding_paise: number;
   late_flag: boolean;
+  monthly_dues_enabled: boolean;
   receipt_prefix: string;
   upi_id: string | null;
   upi_payee_name: string | null;
