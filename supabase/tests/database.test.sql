@@ -707,6 +707,71 @@ do $$ declare r jsonb; begin
   end if;
 end $$;
 
+
+\echo '26. Event documents, flat-type-only events, due in following month'
+:as_ad
+do $$ declare sid uuid; ev uuid; evt uuid; p jsonb; v_soc uuid := public._tv('soc_a'); v_ut uuid; v_path text; v_before bigint; begin
+  select id into ev from public.events where society_id = v_soc and status = 'open' and series_id is not null limit 1;
+  v_path := v_soc::text || '/events/' || ev::text || '/estimate.pdf';
+  if public.add_event_documents(ev, jsonb_build_array(
+       jsonb_build_object('title', 'Estimate A', 'path', v_path, 'mime', 'application/pdf', 'size', 1000),
+       jsonb_build_object('title', 'Estimate B', 'note', 'second quote', 'path', v_soc::text || '/events/' || ev::text || '/b.png', 'mime', 'image/png', 'size', 2000))) <> 2 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: documents not added';
+  end if;
+  begin
+    perform public.add_event_documents(ev, jsonb_build_array(jsonb_build_object('title', 'Bad', 'path', v_soc::text || '/ledger/x.pdf')));
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: file outside the event folder accepted';
+  exception when sqlstate 'P0001' then null; end;
+  perform public.update_event_document((select id from public.event_documents where title = 'Estimate A'), 'Estimate A (revised)', 'new', null, null, null);
+  perform public.remove_event_document((select id from public.event_documents where title = 'Estimate B'));
+  if (select count(*) from public.event_documents where event_id = ev) <> 1 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: removed document still visible';
+  end if;
+  perform set_config('hh.ev', ev::text, false);
+end $$;
+:as_owner
+do $$ declare n int; begin
+  select count(distinct user_id) into n from public.notifications where kind = 'event_document' and user_id in (public._tv('sa'), public._tv('ad'), public._tv('r1'), public._tv('r2'));
+  if n <> 4 then raise exception using errcode = 'TF001', message = 'TEST FAIL: document changes must notify everyone, got ' || n; end if;
+  if (select count(*) from public.notifications where kind = 'event_document' and user_id = public._tv('r1')) <> 3 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: add + edit + remove should each notify';
+  end if;
+  if (select count(*) from public.event_documents where removed_at is not null) <> 1 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: removal must be soft';
+  end if;
+end $$;
+:as_r2
+do $$ declare ev uuid := current_setting('hh.ev', true)::uuid; begin
+  if (select count(*) from public.event_documents where event_id = ev) <> 1 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: member cannot see the documents';
+  end if;
+  begin
+    perform public.remove_event_document((select id from public.event_documents limit 1));
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: resident removed a document';
+  exception when insufficient_privilege then null; end;
+end $$;
+:as_ad
+do $$ declare sid uuid; ev record; evt uuid; p jsonb; v_soc uuid := public._tv('soc_a'); v_ut uuid; v_over_before bigint; begin
+  -- due in the following month
+  sid := public.create_event_series(v_soc, 'Water tanker', null, 3000000, 'all', '{}', 7, true, 1);
+  select * into ev from public.events where series_id = sid;
+  if ev.due_date <> (date_trunc('month', public.ist_today()) + interval '1 month' + interval '6 days')::date then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: due date should be the 7th of next month, got ' || ev.due_date;
+  end if;
+  -- an event for one flat type only
+  select id into v_ut from public.unit_types where society_id = v_soc order by sort_order limit 1;
+  p := public.society_position(v_soc);
+  v_over_before := (p -> 'totals' ->> 'pending_paise')::bigint;
+  evt := public.create_event(v_soc, 'Only one type repair', null, 600000, 'unit_types', array[v_ut], '{}', '[]', public.ist_today() + 5, null, true);
+  p := public.society_position(v_soc);
+  if jsonb_array_length(p -> 'scoped') <> 1 or (p -> 'scoped' -> 0 ->> 'pending_paise')::bigint <= 0 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: flat-type-only event must be reported separately';
+  end if;
+  if (p -> 'totals' ->> 'pending_paise')::bigint <> v_over_before then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: flat-type-only event leaked into the overall totals';
+  end if;
+end $$;
+
 :as_owner
 do $$ declare v jsonb; begin
   v := public.run_daily_jobs();

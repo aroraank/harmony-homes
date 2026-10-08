@@ -25,7 +25,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 
 type Hist = { amount_paise: number; from: string; reason: string | null; at: string };
 type Series = {
-  id: string; title: string; description: string | null; scope_type: 'all' | 'unit_types'; due_day: number; is_active: boolean;
+  id: string; title: string; description: string | null; scope_type: 'all' | 'unit_types'; due_day: number; due_month_offset: number; is_active: boolean;
   total_cost_paise: number; pending_total_paise: number | null; pending_from_period: string | null; this_month_event_id: string | null; history: Hist[];
 };
 type Expense = {
@@ -126,7 +126,7 @@ export default function RecurringPage() {
                     <div className="min-w-0">
                       <p className="truncate font-bold">{s.title}</p>
                       <p className="text-[12.5px] text-muted-foreground">
-                        <span className="tabular font-semibold text-foreground">{formatINR(s.total_cost_paise)}</span> {t('a month')} · {t('due by day {{d}}', { d: s.due_day })}
+                        <span className="tabular font-semibold text-foreground">{formatINR(s.total_cost_paise)}</span> {t('a month')} · {s.due_month_offset === 1 ? t('due by day {{d}} of next month', { d: s.due_day }) : t('due by day {{d}}', { d: s.due_day })}
                       </p>
                     </div>
                     <Badge variant={s.is_active ? 'success' : 'muted'}>{s.is_active ? t('Auto every month') : t('Paused')}</Badge>
@@ -228,6 +228,7 @@ function SeriesCreateDialog({ open, onClose, types, societyId, onDone }: { open:
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [day, setDay] = useState('10');
+  const [nextMonth, setNextMonth] = useState(false);
   const [scope, setScope] = useState<'all' | 'unit_types'>('all');
   const [ids, setIds] = useState<string[]>([]);
   const [now, setNow] = useState(true);
@@ -243,7 +244,7 @@ function SeriesCreateDialog({ open, onClose, types, societyId, onDone }: { open:
     try {
       await rpc('create_event_series', {
         p_society: societyId, p_title: title, p_description: null, p_total_cost_paise: paise, p_scope_type: scope,
-        p_unit_type_ids: scope === 'unit_types' ? ids : [], p_due_day: d, p_publish_now: now,
+        p_unit_type_ids: scope === 'unit_types' ? ids : [], p_due_day: d, p_publish_now: now, p_due_month_offset: nextMonth ? 1 : 0,
       });
       toast.success(t('Saved. Everyone has been notified.'));
       setTitle(''); setAmount('');
@@ -273,6 +274,10 @@ function SeriesCreateDialog({ open, onClose, types, societyId, onDone }: { open:
               <IntInput max={28} value={day} onChange={(e) => setDay(e.target.value)} />
             </Field>
           </div>
+          <label className="flex min-h-11 cursor-pointer items-center justify-between">
+            <span className="text-sm font-semibold">{t('Due in the following month (e.g. September’s share due on 7 October)')}</span>
+            <Switch checked={nextMonth} onCheckedChange={setNextMonth} />
+          </label>
           <div className="flex gap-2">
             {(['all', 'unit_types'] as const).map((k) => (
               <Button key={k} type="button" size="sm" variant={scope === k ? 'default' : 'outline'} onClick={() => setScope(k)}>
@@ -306,6 +311,7 @@ function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; 
   const [desc, setDesc] = useState('');
   const [day, setDay] = useState('10');
   const [active, setActive] = useState(true);
+  const [nextMonth, setNextMonth] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState<string | null>(null);
   if (series && loaded !== series.id) {
@@ -314,6 +320,7 @@ function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; 
     setDesc(series.description ?? '');
     setDay(String(series.due_day));
     setActive(series.is_active);
+    setNextMonth(series.due_month_offset === 1);
   }
   const save = async () => {
     if (!series) return;
@@ -322,7 +329,7 @@ function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; 
     if (!(d >= 1 && d <= 28)) return toast.error(t('Day must be between 1 and 28.'));
     setBusy(true);
     try {
-      await rpc('update_event_series', { p_series: series.id, p_title: title, p_description: desc || null, p_due_day: d, p_is_active: active });
+      await rpc('update_event_series', { p_series: series.id, p_title: title, p_description: desc || null, p_due_day: d, p_is_active: active, p_due_month_offset: nextMonth ? 1 : 0 });
       toast.success(t('Saved. Everyone has been notified.'));
       setLoaded(null);
       onClose();
@@ -346,6 +353,10 @@ function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; 
           <Field label={t('Due by day')}>
             <IntInput max={28} value={day} onChange={(e) => setDay(e.target.value)} />
           </Field>
+          <label className="flex min-h-11 cursor-pointer items-center justify-between">
+            <span className="text-sm font-semibold">{t('Due in the following month (e.g. September’s share due on 7 October)')}</span>
+            <Switch checked={nextMonth} onCheckedChange={setNextMonth} />
+          </label>
           <Field label={t('Description')} optional>
             <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={2000} rows={3} />
           </Field>

@@ -5,7 +5,7 @@ export const BUCKET = 'attachments';
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
 
-export type UploadKind = 'claims' | 'concerns' | 'ledger' | 'notices' | 'settings';
+export type UploadKind = 'claims' | 'concerns' | 'ledger' | 'notices' | 'settings' | 'events';
 
 export function validateFile(f: File, opts: { imagesOnly?: boolean; maxBytes?: number } = {}): string | null {
   const max = opts.maxBytes ?? MAX_FILE_BYTES;

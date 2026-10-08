@@ -23,6 +23,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { EventDocuments } from '@/components/EventDocuments';
 import { UnitLink } from '@/components/UnitLink';
 import { AmountInput } from '@/components/AmountInput';
 import { Input } from '@/components/ui/input';
@@ -247,6 +248,8 @@ export default function EventDetailPage() {
           )}
         </div>
       )}
+
+      <EventDocuments eventId={e.id} societyId={e.society_id} canManage={canManage} />
 
       <SectionTitle
         action={

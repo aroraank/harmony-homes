@@ -1,3 +1,4 @@
+import { MyPending } from '@/components/MyPending';
 import { RecentEvents } from '@/components/RecentEvents';
 import { SocietyPosition } from '@/components/SocietyPosition';
 import { SurplusBoard } from '@/components/SurplusBoard';
@@ -64,6 +65,7 @@ export default function HomePage() {
 
       <BalanceHero d={d} />
       {d.mine && <MyFlatCard d={d} />}
+      {d.mine && <MyPending unitId={d.mine.unit_id} />}
       {d.admin && <AdminAttention d={d} />}
       <SocietyPosition />
       <SurplusBoard />
@@ -80,7 +82,7 @@ export default function HomePage() {
             {t('Active collections')}
           </SectionTitle>
           <div className="space-y-2.5">
-            {d.events.map((e) => {
+            {d.events.slice(0, 3).map((e) => {
               const pct = Math.min(100, Math.round((e.collected_paise / Math.max(1, e.target_paise)) * 100));
               return (
                 <Link key={e.id} to={`/events/${e.id}`} className="block rounded-2xl border bg-card p-4 shadow-card transition-colors hover:bg-secondary/50">
