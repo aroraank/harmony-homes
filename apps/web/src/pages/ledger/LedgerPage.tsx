@@ -35,7 +35,7 @@ export default function LedgerPage() {
   const [dir, setDir] = useState<'' | 'credit' | 'debit'>('');
   const [period, setPeriod] = useState('');
   const [search, setSearch] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const [selected, setSelected] = useState<LedgerRow | null>(null);
   const [exporting, setExporting] = useState(false);
   const [stmtOpen, setStmtOpen] = useState(false);
