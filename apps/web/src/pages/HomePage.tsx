@@ -1,7 +1,7 @@
 import { MyPending } from '@/components/MyPending';
 import { CollectionsList } from '@/components/CollectionsList';
 import { SeriesMonthCard } from '@/components/SeriesMonthCard';
-import { SocietyPosition } from '@/components/SocietyPosition';
+import { SocietyPosition, usePosition } from '@/components/SocietyPosition';
 import { SurplusBoard } from '@/components/SurplusBoard';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -23,7 +23,8 @@ import {
   Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatDate, formatINR, periodLabel } from '@harmony/shared';
+import { currentPeriod, formatDate, formatINR, periodLabel } from '@harmony/shared';
+import { rpc } from '@/lib/supabase';
 import { useMember } from '@/lib/auth';
 import { useDashboard, useNextMeeting, useSettings } from '@/lib/queries';
 import { enablePush, pushSupported } from '@/lib/push';
@@ -37,7 +38,7 @@ import { SectionTitle } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ReminderCards } from './reminders/ReminderCards';
-import type { Dashboard } from '@/types';
+import type { Dashboard, MonthReport } from '@/types';
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -65,8 +66,8 @@ export default function HomePage() {
         <h1 className="text-2xl font-extrabold tracking-tight">{firstName}</h1>
       </div>
 
-      <BalanceHero d={d} />
-      {d.mine && <MyFlatCard d={d} />}
+      <BalanceHero />
+      {d.mine && <MyFlatCard d={d} monthlyOn={monthlyOn} />}
       {d.mine && <MyPending unitId={d.mine.unit_id} />}
       {d.admin && <AdminAttention d={d} monthlyOn={monthlyOn} />}
       {monthlyOn ? <MonthProgress d={d} /> : <SeriesMonthCard />}
@@ -117,37 +118,54 @@ function QuickLink({ to, icon, label }: { to: string; icon: React.ReactNode; lab
   );
 }
 
-function BalanceHero({ d }: { d: Dashboard }) {
+function BalanceHero() {
   const { t } = useTranslation();
-  const general = d.funds.find((f) => f.kind === 'general');
-  const others = d.funds.filter((f) => f.kind !== 'general');
+  const m = useMember();
+  const cur = currentPeriod();
+  const recv = useQuery({
+    queryKey: ['monthReport', m.societyId, cur, 'all-received'],
+    queryFn: () => rpc<MonthReport>('month_report', { p_society: m.societyId, p_period: cur, p_fund_id: null }),
+  });
+  const received = recv.data ? recv.data.maintenance_collected_paise + recv.data.event_collected_paise : null;
+  const pos = usePosition();
+  const p = pos.data;
+  const overallFunds = (p?.funds ?? []).filter((f) => !f.scope_label && f.balance_paise !== 0);
+  const scopedChips = (p?.scoped ?? []).filter((g) => g.balance_paise !== 0);
   return (
     <div className="hero-gradient relative overflow-hidden rounded-3xl p-5 text-white shadow-lift">
       <div aria-hidden className="absolute -right-8 -top-8 size-40 rounded-full bg-lime-300/25 blur-2xl" />
       <div className="relative">
         <div className="flex items-center gap-2 text-[13px] font-semibold text-white/85">
-          <Wallet className="size-4" /> {t('Society balance')}
+          <Wallet className="size-4" /> {t('Society surplus')}
         </div>
-        <p className="tabular mt-1 text-[38px] font-extrabold leading-none tracking-tight">{formatINR(d.balance_paise)}</p>
-        <p className="mt-1.5 text-[12.5px] text-white/75">{t('Always calculated from the ledger: money in minus money out.')}</p>
-        <div className="no-scrollbar -mx-1 mt-4 flex gap-2 overflow-x-auto px-1">
-          {general && (
-            <span className="glass shrink-0 rounded-full px-3 py-1.5 text-[12.5px] font-semibold">
-              {t('General')} · {formatINR(general.balance_paise)}
-            </span>
-          )}
-          {others.map((f) => (
-            <Link key={f.id} to={f.event_id ? `/events/${f.event_id}` : '/ledger'} className="glass shrink-0 rounded-full px-3 py-1.5 text-[12.5px] font-semibold">
-              {f.name} · {formatINR(f.balance_paise)}
-            </Link>
-          ))}
-        </div>
+        <p className="tabular mt-1 text-[38px] font-extrabold leading-none tracking-tight">{p ? formatINR(p.totals.balance_paise) : '—'}</p>
+        <p className="mt-1.5 text-[12.5px] text-white/75">{t('Left in the funds for all flats after spending, from September 2026 onwards.')}</p>
+        {received !== null && received > 0 && (
+          <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12.5px] font-semibold">
+            {t('Received this month')}: <span className="tabular">{formatINR(received)}</span>
+            <span className="block font-normal text-white/75">{t('includes payments for earlier months that were pending')}</span>
+          </p>
+        )}
+        {(overallFunds.length > 0 || scopedChips.length > 0) && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {overallFunds.map((f) => (
+              <Link key={f.id} to={f.event_id ? `/events/${f.event_id}` : '/ledger'} className="glass rounded-full px-3 py-1.5 text-[12.5px] font-semibold">
+                {f.kind === 'general' ? t('General') : f.name} · {formatINR(f.balance_paise)}
+              </Link>
+            ))}
+            {scopedChips.map((g) => (
+              <span key={g.label} className="glass rounded-full px-3 py-1.5 text-[12.5px] font-semibold">
+                {t('{{t}} only', { t: g.label })} · {formatINR(g.balance_paise)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function MyFlatCard({ d }: { d: Dashboard }) {
+function MyFlatCard({ d, monthlyOn }: { d: Dashboard; monthlyOn: boolean }) {
   const { t } = useTranslation();
   const mine = d.mine!;
   const pending = mine.pending_paise;
@@ -158,9 +176,13 @@ function MyFlatCard({ d }: { d: Dashboard }) {
           <p className="text-[12.5px] font-semibold text-muted-foreground">
             {t('My flat')} · <span className="tabular">{mine.unit_code}</span>
           </p>
-          <p className="mt-0.5 text-[13px]">
-            {periodLabel(d.period)}: <StatusChip status={mine.this_month.status} className="ml-1 align-middle" />
-          </p>
+          {monthlyOn ? (
+            <p className="mt-0.5 text-[13px]">
+              {periodLabel(d.period)}: <StatusChip status={mine.this_month.status} className="ml-1 align-middle" />
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[13px]">{pending > 0 ? t('Pending dues') : t('No pending dues')}</p>
+          )}
         </div>
         <div className="text-right">
           <p className="text-[12px] text-muted-foreground">{pending > 0 ? t('To pay') : mine.advance_paise > 0 ? t('Advance') : t('All clear')}</p>
@@ -174,12 +196,14 @@ function MyFlatCard({ d }: { d: Dashboard }) {
           {t('{{count}} payment claim(s) waiting for admin verification', { count: mine.pending_claims })}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-2 border-t bg-muted/30 p-3">
-        <Button asChild variant={pending > 0 ? 'hero' : 'secondary'}>
-          <Link to="/pay">
-            <Wallet /> {pending > 0 ? t('Pay {{amount}}', { amount: formatINR(pending) }) : t('Pay')}
-          </Link>
-        </Button>
+      <div className={`grid gap-2 border-t bg-muted/30 p-3 ${monthlyOn || pending > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {(monthlyOn || pending > 0) && (
+          <Button asChild variant={pending > 0 ? 'hero' : 'secondary'}>
+            <Link to="/pay">
+              <Wallet /> {pending > 0 ? t('Pay {{amount}}', { amount: formatINR(pending) }) : t('Pay')}
+            </Link>
+          </Button>
+        )}
         <Button asChild variant="outline">
           <Link to="/dues">
             <ClipboardList /> {t('My dues')}
