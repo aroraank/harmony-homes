@@ -41,7 +41,7 @@ export default function MorePage() {
   const society: Item[] = [
     { to: '/meetings', label: t('Meetings'), Icon: CalendarClock },
     { to: '/concerns', label: m.isAdmin ? t('Concerns inbox') : t('My concerns'), Icon: MessageSquareWarning },
-    { to: '/contacts', label: t('Contacts'), Icon: Phone },
+    { to: '/contacts', label: t('Important numbers'), Icon: Phone },
     { to: '/reminders', label: t('Reminders'), Icon: BellRing },
     { to: '/reports', label: t('Reports & charts'), Icon: BarChart3 },
   ];

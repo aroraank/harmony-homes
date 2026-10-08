@@ -62,7 +62,8 @@ export default function MeetingComposePage() {
     setScope(e.scope_type);
     setTypeIds(e.scope_unit_type_ids);
     setCustomIds(e.scope_unit_ids);
-    setAgenda(e.agenda.length ? e.agenda.map((a) => a.text) : ['']);
+    const own = e.agenda.filter((a) => !a.by);
+    setAgenda(own.length ? own.map((a) => a.text) : ['']);
   }, [existing.data]);
 
   const toggle = (list: string[], id_: string) => (list.includes(id_) ? list.filter((x) => x !== id_) : [...list, id_]);

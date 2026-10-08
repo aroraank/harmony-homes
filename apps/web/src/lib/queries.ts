@@ -1,3 +1,4 @@
+import { istToday } from '@harmony/shared';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { AppError, rpc, supabase } from './supabase';
 import type {
@@ -113,7 +114,7 @@ export function useNextMeeting(societyId: string) {
   return useQuery({
     queryKey: ['nextMeeting', societyId],
     queryFn: async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = istToday();
       const rows = unwrap<Meeting[]>(
         await supabase
           .from('v_meetings')

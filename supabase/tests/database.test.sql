@@ -778,6 +778,114 @@ do $$ declare v jsonb; begin
   if v::text like '%error%' then raise exception using errcode = 'TF001', message = 'TEST FAIL: daily jobs ' || v; end if;
 end $$;
 
+\echo '28. Receipt lookup, shared contacts directory, agenda suggestions'
+:as_owner
+update public.profiles set must_change_password = false where id in (select id from public.profiles where full_name in ('Resident One', 'Resident Two', 'Rohit Admin'));
+update public.memberships set status = 'active' where user_id in (select id from public.profiles where full_name in ('Resident One', 'Resident Two', 'Rohit Admin')) and society_id = public._tv('soc_a');
+:as_sa
+do $$ declare v jsonb; begin
+  v := public.record_payment(public._tv('u_p1gf'), 5000, current_date, 'cash', null, 'receipt lookup test', null, 'idem-g28-receipt');
+  perform set_config('test.receipt', v ->> 'receipt_no', false);
+  if coalesce(v ->> 'receipt_no', '') = '' then raise exception using errcode = 'TF001', message = 'TEST FAIL: payment returned no receipt number ' || v::text; end if;
+  v := public.find_receipt(public._tv('soc_a'), lower(' ' || current_setting('test.receipt') || ' '));
+  if jsonb_array_length(v) <> 1 or v -> 0 ->> 'unit_code' <> 'P1-GF' or (v -> 0 ->> 'cancelled')::boolean then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: admin receipt lookup ' || v::text;
+  end if;
+  v := public.find_receipt(public._tv('soc_a'), ltrim(split_part(current_setting('test.receipt'), '/', 3), '0'));
+  if jsonb_array_length(v) < 1 then raise exception using errcode = 'TF001', message = 'TEST FAIL: lookup by plain number'; end if;
+end $$;
+:as_r1
+do $$ declare v jsonb; begin
+  v := public.find_receipt(public._tv('soc_a'), current_setting('test.receipt'));
+  if jsonb_array_length(v) <> 1 then raise exception using errcode = 'TF001', message = 'TEST FAIL: member cannot find own receipt'; end if;
+end $$;
+:as_r2
+do $$ declare v jsonb; begin
+  v := public.find_receipt(public._tv('soc_a'), current_setting('test.receipt'));
+  if jsonb_array_length(v) <> 0 then raise exception using errcode = 'TF001', message = 'TEST FAIL: member sees another flat receipt'; end if;
+end $$;
+
+-- contacts: any member adds, name-sorted, duplicate number refused, only owner/admin edits
+:as_r1
+do $$ declare v_cat uuid; v_id uuid; d jsonb; begin
+  select id into v_cat from public.contact_categories where society_id = public._tv('soc_a') and name = 'Plumber';
+  v_id := public.add_contact(public._tv('soc_a'), v_cat, 'Zafar Plumber', array['9811111111', '9822222222', '98 33333333'], 'near market', '9-6', '300/visit', true);
+  perform set_config('test.contact', v_id::text, false);
+  perform public.add_contact(public._tv('soc_a'), v_cat, 'Amit Plumber', array['9844444444'], null, null, null, true);
+  d := public.contact_directory(public._tv('soc_a'));
+  if d -> 0 ->> 'name' <> 'Amit Plumber' then raise exception using errcode = 'TF001', message = 'TEST FAIL: directory not sorted by name: ' || (d -> 0 ->> 'name'); end if;
+  if jsonb_array_length((select x -> 'phones' from jsonb_array_elements(d) x where x ->> 'name' = 'Zafar Plumber')) <> 3 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: phones not kept';
+  end if;
+  if (select x ->> 'added_by_label' from jsonb_array_elements(d) x where x ->> 'name' = 'Zafar Plumber') not like 'Resident One%P1-GF' then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: added-by label ' || (select x ->> 'added_by_label' from jsonb_array_elements(d) x where x ->> 'name' = 'Zafar Plumber');
+  end if;
+  begin perform public.add_contact(public._tv('soc_a'), v_cat, 'Dup', array['9822222222'], null, null, null, true);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: duplicate number accepted';
+  exception when sqlstate 'P0001' then null; end;
+  begin perform public.add_contact(public._tv('soc_a'), v_cat, 'Bad', array['12345'], null, null, null, true);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: invalid number accepted';
+  exception when sqlstate 'P0001' then null; end;
+  begin perform public.add_contact(public._tv('soc_a'), public._tv('gen_a'), 'Bad tag', array['9855555555'], null, null, null, true);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: free-form tag accepted';
+  exception when sqlstate 'P0001' then null; end;
+end $$;
+:as_r2
+do $$ begin
+  begin perform public.update_contact(current_setting('test.contact')::uuid, (select id from public.contact_categories where society_id = public._tv('soc_a') and name = 'Plumber'), 'Hijack', array['9811111111'], null, null, null, true);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: another member edited a contact';
+  exception when sqlstate '42501' then null; end;
+  begin perform public.archive_contact(current_setting('test.contact')::uuid);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: another member removed a contact';
+  exception when sqlstate '42501' then null; end;
+end $$;
+:as_sa
+do $$ begin
+  perform public.update_contact(current_setting('test.contact')::uuid, (select id from public.contact_categories where society_id = public._tv('soc_a') and name = 'Electrician'), 'Zafar Electrician', array['9811111111'], null, null, null, true);
+  if (select count(*) from jsonb_array_elements(public.contact_directory(public._tv('soc_a'))) x where x ->> 'category' = 'Electrician') <> 1 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: admin edit not applied';
+  end if;
+end $$;
+
+-- agenda: admin points + member suggestion that waits for approval and survives an agenda edit
+:as_sa
+do $$ declare v_m uuid; begin
+  v_m := public.create_meeting(public._tv('soc_a'), 'Test AGM', null, current_date + 3, '18:00', 'Hall', 'all', '{}', '{}', array['Water motor', 'Security'], true);
+  perform set_config('test.meeting', v_m::text, false);
+end $$;
+:as_r1
+do $$ declare v_i uuid; a jsonb; begin
+  v_i := public.suggest_agenda_item(current_setting('test.meeting')::uuid, 'Parking rules for visitors');
+  perform set_config('test.agenda', v_i::text, false);
+  begin perform public.suggest_agenda_item(current_setting('test.meeting')::uuid, 'parking rules for visitors');
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: duplicate agenda accepted';
+  exception when sqlstate 'P0001' then null; end;
+  begin perform public.review_agenda_item(v_i, true);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: member approved an agenda point';
+  exception when others then if sqlstate not in ('42501', 'P0001') then raise; end if; end;
+  a := (select agenda from public.v_meetings where id = current_setting('test.meeting')::uuid);
+  if jsonb_array_length(a) <> 3 or a -> 2 ->> 'status' <> 'suggested' or (a -> 2 ->> 'by') not like 'Resident One%' or a -> 0 ->> 'status' <> 'approved' then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: agenda order/status ' || a::text;
+  end if;
+end $$;
+:as_r2
+do $$ declare a jsonb; begin
+  a := (select agenda from public.v_meetings where id = current_setting('test.meeting')::uuid);
+  if jsonb_array_length(a) <> 3 then raise exception using errcode = 'TF001', message = 'TEST FAIL: other members cannot see the pending suggestion'; end if;
+  begin perform public.delete_agenda_suggestion(current_setting('test.agenda')::uuid);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: member removed another member suggestion';
+  exception when sqlstate '42501' then null; end;
+end $$;
+:as_sa
+do $$ declare a jsonb; begin
+  perform public.set_meeting_agenda(current_setting('test.meeting')::uuid, array['Water motor', 'Security', 'Budget']);
+  a := (select agenda from public.v_meetings where id = current_setting('test.meeting')::uuid);
+  if jsonb_array_length(a) <> 4 or a -> 3 ->> 'status' <> 'suggested' then raise exception using errcode = 'TF001', message = 'TEST FAIL: admin agenda edit lost the suggestion ' || a::text; end if;
+  perform public.review_agenda_item(current_setting('test.agenda')::uuid, true);
+  a := (select agenda from public.v_meetings where id = current_setting('test.meeting')::uuid);
+  if a -> 3 ->> 'status' <> 'approved' or a -> 3 ->> 'by' is null then raise exception using errcode = 'TF001', message = 'TEST FAIL: approved suggestion should stay credited ' || a::text; end if;
+end $$;
+
 \echo '27. Monthly dues switch and last-month collection progress'
 :as_owner
 do $$ declare v_soc uuid; v jsonb; begin

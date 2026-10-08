@@ -45,10 +45,10 @@ export default function UnitStatementPage() {
     if (!s) return;
     downloadCsv(
       `statement-${s.unit.code}.csv`,
-      ['Type', 'Date', 'Description', 'Amount (Rs)', 'Paid (Rs)', 'Pending (Rs)', 'Status / Receipt'],
+      ['Flat', 'Type', 'Date', 'Description', 'Amount (Rs)', 'Paid (Rs)', 'Pending (Rs)', 'Status', 'Receipt no'],
       [
-        ...s.dues.map((d) => ['Due', d.due_date, d.label, rupees(d.amount_paise), rupees(d.paid_paise), rupees(d.pending_paise), d.waived ? 'waived' : d.pending_paise ? 'pending' : 'paid']),
-        ...s.payments.map((p) => ['Payment', p.date, `${p.fund} ${MODE_LABELS[p.mode] ?? p.mode} ${p.reference_no ?? ''}`, rupees(p.amount_paise), '', '', `${p.receipt_no ?? ''}${p.is_reversed ? ' (cancelled)' : ''}`]),
+        ...s.dues.map((d) => [s.unit.code, 'Due', d.due_date, d.label, rupees(d.amount_paise), rupees(d.paid_paise), rupees(d.pending_paise), d.waived ? 'waived' : d.pending_paise ? 'pending' : 'paid', '']),
+        ...s.payments.map((p) => [s.unit.code, 'Payment', p.date, `${p.fund} ${MODE_LABELS[p.mode] ?? p.mode} ${p.reference_no ?? ''}`.trim(), rupees(p.amount_paise), '', '', p.is_reversed ? 'cancelled' : 'received', p.receipt_no ?? '']),
       ],
     );
   };

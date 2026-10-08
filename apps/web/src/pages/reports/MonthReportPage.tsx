@@ -35,7 +35,9 @@ export default function MonthReportPage() {
   const settings = useSettings(m.societyId);
   const cats = useExpenseCategories(m.societyId);
   const period = raw && isValidPeriod(raw) ? raw : currentPeriod();
-  const [scope, setScope] = useState<'general' | 'all'>('general');
+  const monthlyOn = settings.data?.monthly_dues_enabled !== false;
+  const [scopeSel, setScope] = useState<'general' | 'all' | null>(null);
+  const scope: 'general' | 'all' = scopeSel ?? (monthlyOn ? 'general' : 'all');
   const [action, setAction] = useState<null | 'close' | 'reopen'>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -86,8 +88,8 @@ export default function MonthReportPage() {
     if (!r) return;
     downloadCsv(
       `month-${period}.csv`,
-      ['Flat', 'Status', 'Due (Rs)', 'Paid towards this month (Rs)', 'Pending (Rs)', 'Advance held (Rs)'],
-      r.units.map((u) => [u.unit_code, u.status, rupees(u.due_paise), rupees(u.paid_paise), rupees(u.pending_paise), rupees(u.advance_paise)]),
+      ['Flat', 'Status', 'Due (Rs)', 'Paid towards this month (Rs)', 'Pending (Rs)', 'Advance held (Rs)', 'Receipt nos (received this month)'],
+      r.units.map((u) => [u.unit_code, u.status, rupees(u.due_paise), rupees(u.paid_paise), rupees(u.pending_paise), rupees(u.advance_paise), r.payments.filter((p) => p.unit_code === u.unit_code).map((p) => p.receipt_no).filter(Boolean).join('; ')]),
     );
   };
 
@@ -136,7 +138,7 @@ export default function MonthReportPage() {
       <div className="mt-3 flex items-center gap-2">
         <Tabs value={scope} onValueChange={(v) => setScope(v as 'general' | 'all')} className="flex-1">
           <TabsList>
-            <TabsTrigger value="general">{t('Maintenance (General)')}</TabsTrigger>
+            {monthlyOn && <TabsTrigger value="general">{t('Maintenance (General)')}</TabsTrigger>}
             <TabsTrigger value="all">{t('All funds')}</TabsTrigger>
           </TabsList>
         </Tabs>

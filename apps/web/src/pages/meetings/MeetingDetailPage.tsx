@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/Field';
+import { MeetingAgenda } from '@/components/MeetingAgenda';
 import type { Meeting } from '@/types';
 
 function timeLabel(t: string) {
@@ -137,18 +138,7 @@ export default function MeetingDetailPage() {
       )}
 
       <SectionTitle>{t('Agenda')}</SectionTitle>
-      {x.agenda.length ? (
-        <Card className="divide-y">
-          {x.agenda.map((a, i) => (
-            <div key={a.id} className="flex items-start gap-3 px-4 py-3">
-              <span className="tabular mt-0.5 text-[12px] font-bold text-muted-foreground">{i + 1}.</span>
-              <p className="text-sm">{a.text}</p>
-            </div>
-          ))}
-        </Card>
-      ) : (
-        <p className="px-1 text-sm text-muted-foreground">{t('No agenda items yet.')}</p>
-      )}
+      <MeetingAgenda meeting={x} />
 
       <ConfirmSheet
         open={action === 'delete'}

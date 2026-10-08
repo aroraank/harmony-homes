@@ -4,7 +4,7 @@ import { SeriesMonthCard } from '@/components/SeriesMonthCard';
 import { SocietyPosition, usePosition } from '@/components/SocietyPosition';
 import { SurplusBoard } from '@/components/SurplusBoard';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -15,6 +15,8 @@ import {
   CalendarClock,
   ClipboardList,
   Download,
+  Phone,
+  Search,
   FileText,
   MessageSquareWarning,
   Receipt,
@@ -23,10 +25,10 @@ import {
   Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { currentPeriod, formatDate, formatINR, periodLabel } from '@harmony/shared';
+import { addDays, currentPeriod, istToday, formatDate, formatINR, periodLabel } from '@harmony/shared';
 import { supabase } from '@/lib/supabase';
 import { useMember } from '@/lib/auth';
-import { unwrap, useDashboard, useNextMeeting, useSettings } from '@/lib/queries';
+import { unwrap, useContactCategories, useDashboard, useNextMeeting, useSettings } from '@/lib/queries';
 import { enablePush, pushSupported } from '@/lib/push';
 import { useInstallPrompt } from '@/lib/install';
 import { getLocal, setLocal } from '@/lib/storage';
@@ -37,6 +39,9 @@ import { CardSkeleton, ErrorState } from '@/components/States';
 import { SectionTitle } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { MeetingAgenda } from '@/components/MeetingAgenda';
+import { useDirectory } from '@/pages/contacts/ContactsPage';
 import { ReminderCards } from './reminders/ReminderCards';
 import type { Dashboard } from '@/types';
 
@@ -57,7 +62,8 @@ export default function HomePage() {
     );
   if (!q.data) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const d = q.data;
-  const firstName = (m.fullName && m.fullName !== m.unit_name ? m.fullName.split(' ')[0] : m.unit_code) || m.fullName || '';
+  const firstName =
+    (m.fullName && m.fullName !== m.unit_name ? m.fullName.split(' ')[0] : m.unit_code) || m.fullName || '';
 
   return (
     <div className="space-y-4 animate-fade-up">
@@ -66,6 +72,7 @@ export default function HomePage() {
         <h1 className="text-2xl font-extrabold tracking-tight">{firstName}</h1>
       </div>
 
+      <NextMeetingCard />
       <BalanceHero />
       {d.mine && <MyFlatCard d={d} monthlyOn={monthlyOn} />}
       {d.mine && <MyPending unitId={d.mine.unit_id} />}
@@ -75,19 +82,29 @@ export default function HomePage() {
       <SocietyPosition />
       <SurplusBoard />
       <ReminderCards compact />
-      <NextMeetingCard />
+      <ImportantNumbersCard />
       <EnableExtras />
 
       {d.fixed_expenses.length > 0 && (
         <section>
-          <SectionTitle action={<Link to="/events/recurring" className="text-[13px] font-semibold text-primary">{d.admin ? t('Manage') : t('History')}</Link>}>{t('Fixed monthly expenses')}</SectionTitle>
+          <SectionTitle
+            action={
+              <Link to="/events/recurring" className="text-[13px] font-semibold text-primary">
+                {d.admin ? t('Manage') : t('History')}
+              </Link>
+            }
+          >
+            {t('Fixed monthly expenses')}
+          </SectionTitle>
           <Card className="divide-y">
             {d.fixed_expenses.map((f) => (
               <div key={f.title} className="flex items-center gap-3 px-4 py-3">
                 <CalendarClock className="size-5 text-primary" />
                 <div className="flex-1">
                   <p className="text-sm font-semibold">{f.title}</p>
-                  <p className="text-xs text-muted-foreground">{t('Around day {{d}} of every month', { d: f.day_of_month })}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('Around day {{d}} of every month', { d: f.day_of_month })}
+                  </p>
                 </div>
                 <Money paise={f.amount_paise} className="font-bold" />
               </div>
@@ -111,8 +128,13 @@ export default function HomePage() {
 
 function QuickLink({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
   return (
-    <Link to={to} className="flex min-h-[64px] items-center gap-3 rounded-2xl border bg-card px-3.5 shadow-card transition-colors hover:bg-secondary/60">
-      <span className="grid size-10 place-items-center rounded-xl bg-secondary text-primary [&_svg]:size-5">{icon}</span>
+    <Link
+      to={to}
+      className="flex min-h-[64px] items-center gap-3 rounded-2xl border bg-card px-3.5 shadow-card transition-colors hover:bg-secondary/60"
+    >
+      <span className="grid size-10 place-items-center rounded-xl bg-secondary text-primary [&_svg]:size-5">
+        {icon}
+      </span>
       <span className="text-[13.5px] font-semibold leading-tight">{label}</span>
     </Link>
   );
@@ -128,15 +150,23 @@ function BalanceHero() {
     queryKey: ['monthReceived', m.societyId, cur],
     queryFn: async () =>
       unwrap<{ fund_id: string; signed_paise: number }[]>(
-        await supabase.from('v_ledger').select('fund_id, signed_paise').eq('society_id', m.societyId)
-          .in('category', ['maintenance', 'event_contribution']).gte('entry_date', monthStart),
+        await supabase
+          .from('v_ledger')
+          .select('fund_id, signed_paise')
+          .eq('society_id', m.societyId)
+          .in('category', ['maintenance', 'event_contribution'])
+          .gte('entry_date', monthStart),
       ),
   });
   const byFund = new Map<string, number>();
   for (const r of recv.data ?? []) byFund.set(r.fund_id, (byFund.get(r.fund_id) ?? 0) + r.signed_paise);
   const fundById = new Map((pos.data?.funds ?? []).map((f) => [f.id, f]));
-  const currentRows = [...byFund].filter(([id, v]) => v !== 0 && fundById.get(id)?.counted !== false).map(([id, v]) => ({ name: fundById.get(id)?.name ?? t('Other'), v }));
-  const earlier = [...byFund].filter(([id]) => fundById.get(id)?.counted === false).reduce((s, [, v]) => s + v, 0);
+  const currentRows = [...byFund]
+    .filter(([id, v]) => v !== 0 && fundById.get(id)?.counted !== false)
+    .map(([id, v]) => ({ name: fundById.get(id)?.name ?? t('Other'), v }));
+  const earlier = [...byFund]
+    .filter(([id]) => fundById.get(id)?.counted === false)
+    .reduce((s, [, v]) => s + v, 0);
   const received = currentRows.reduce((s, r) => s + r.v, 0) + earlier;
   const p = pos.data;
   const overallFunds = (p?.funds ?? []).filter((f) => !f.scope_label && f.balance_paise !== 0);
@@ -148,8 +178,12 @@ function BalanceHero() {
         <div className="flex items-center gap-2 text-[13px] font-semibold text-white/85">
           <Wallet className="size-4" /> {t('Society surplus')}
         </div>
-        <p className="tabular mt-1 text-[38px] font-extrabold leading-none tracking-tight">{p ? formatINR(p.totals.balance_paise) : '—'}</p>
-        <p className="mt-1.5 text-[12.5px] text-white/75">{t('Counts September 2026 collections and later. August and earlier months are not included.')}</p>
+        <p className="tabular mt-1 text-[38px] font-extrabold leading-none tracking-tight">
+          {p ? formatINR(p.totals.balance_paise) : '—'}
+        </p>
+        <p className="mt-1.5 text-[12.5px] text-white/75">
+          {t('Counts September 2026 collections and later. August and earlier months are not included.')}
+        </p>
         {received > 0 && (
           <div className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12.5px]">
             <p className="font-semibold">
@@ -172,13 +206,29 @@ function BalanceHero() {
         {(overallFunds.length > 0 || scopedChips.length > 0) && (
           <div className="mt-4 flex flex-wrap gap-2">
             {overallFunds.map((f) => (
-              <Link key={f.id} to={f.event_id ? `/events/${f.event_id}` : '/ledger'} className="glass rounded-full px-3 py-1.5 text-[12.5px] font-semibold">
-                {f.kind === 'general' ? t('General') : f.name} · {formatINR(f.balance_paise)}
+              <Link
+                key={f.id}
+                to={f.event_id ? `/events/${f.event_id}` : '/ledger'}
+                className="glass min-w-0 rounded-2xl px-3 py-2"
+              >
+                <span className="block truncate text-[12.5px] font-semibold">
+                  {f.kind === 'general' ? t('General') : f.name}
+                </span>
+                <span className="block text-[12px] text-white/80">
+                  {t('Collection')}:{' '}
+                  <span className="tabular font-bold text-white">{formatINR(f.balance_paise)}</span>
+                </span>
               </Link>
             ))}
             {scopedChips.map((g) => (
-              <span key={g.label} className="glass rounded-full px-3 py-1.5 text-[12.5px] font-semibold">
-                {t('{{t}} only', { t: g.label })} · {formatINR(g.balance_paise)}
+              <span key={g.label} className="glass min-w-0 rounded-2xl px-3 py-2">
+                <span className="block truncate text-[12.5px] font-semibold">
+                  {t('{{t}} only', { t: g.label })}
+                </span>
+                <span className="block text-[12px] text-white/80">
+                  {t('Collection')}:{' '}
+                  <span className="tabular font-bold text-white">{formatINR(g.balance_paise)}</span>
+                </span>
               </span>
             ))}
           </div>
@@ -201,15 +251,24 @@ function MyFlatCard({ d, monthlyOn }: { d: Dashboard; monthlyOn: boolean }) {
           </p>
           {monthlyOn ? (
             <p className="mt-0.5 text-[13px]">
-              {periodLabel(d.period)}: <StatusChip status={mine.this_month.status} className="ml-1 align-middle" />
+              {periodLabel(d.period)}:{' '}
+              <StatusChip status={mine.this_month.status} className="ml-1 align-middle" />
             </p>
           ) : (
             <p className="mt-0.5 text-[13px]">{pending > 0 ? t('Pending dues') : t('No pending dues')}</p>
           )}
         </div>
         <div className="text-right">
-          <p className="text-[12px] text-muted-foreground">{pending > 0 ? t('To pay') : mine.advance_paise > 0 ? t('Advance') : t('All clear')}</p>
-          <p className={pending > 0 ? 'tabular text-2xl font-extrabold text-debit' : 'tabular text-2xl font-extrabold text-credit'}>
+          <p className="text-[12px] text-muted-foreground">
+            {pending > 0 ? t('To pay') : mine.advance_paise > 0 ? t('Advance') : t('All clear')}
+          </p>
+          <p
+            className={
+              pending > 0
+                ? 'tabular text-2xl font-extrabold text-debit'
+                : 'tabular text-2xl font-extrabold text-credit'
+            }
+          >
             {formatINR(pending > 0 ? pending : mine.advance_paise)}
           </p>
         </div>
@@ -219,7 +278,9 @@ function MyFlatCard({ d, monthlyOn }: { d: Dashboard; monthlyOn: boolean }) {
           {t('{{count}} payment claim(s) waiting for admin verification', { count: mine.pending_claims })}
         </p>
       )}
-      <div className={`grid gap-2 border-t bg-muted/30 p-3 ${monthlyOn || pending > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+      <div
+        className={`grid gap-2 border-t bg-muted/30 p-3 ${monthlyOn || pending > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}
+      >
         {(monthlyOn || pending > 0) && (
           <Button asChild variant={pending > 0 ? 'hero' : 'secondary'}>
             <Link to="/pay">
@@ -243,14 +304,47 @@ function AdminAttention({ d, monthlyOn }: { d: Dashboard; monthlyOn: boolean }) 
   const a = d.admin!;
   const items = [
     monthlyOn && !a.dues_generated && m.can('generate_dues')
-      ? { to: '/admin/dues', icon: <CalendarClock />, label: t('Generate dues for {{m}}', { m: periodLabel(d.period) }), n: 0, urgent: true }
+      ? {
+          to: '/admin/dues',
+          icon: <CalendarClock />,
+          label: t('Generate dues for {{m}}', { m: periodLabel(d.period) }),
+          n: 0,
+          urgent: true,
+        }
       : null,
-    a.pending_claims ? { to: '/admin/claims', icon: <BadgeCheck />, label: t('Payment claims to verify'), n: a.pending_claims } : null,
-    a.pending_drafts ? { to: '/admin/expenses', icon: <Receipt />, label: t('Recurring expenses to confirm'), n: a.pending_drafts } : null,
-    a.open_concerns ? { to: '/concerns', icon: <MessageSquareWarning />, label: t('Open concerns'), n: a.open_concerns } : null,
-    a.pending_registrations ? { to: '/admin/members', icon: <UserPlus />, label: t('Registrations to approve'), n: a.pending_registrations } : null,
-    a.open_alerts ? { to: '/admin/alerts', icon: <AlertTriangle />, label: t('Security alerts'), n: a.open_alerts } : null,
-    a.suggested_contacts ? { to: '/contacts', icon: <UserPlus />, label: t('Contact suggestions'), n: a.suggested_contacts } : null,
+    a.pending_claims
+      ? {
+          to: '/admin/claims',
+          icon: <BadgeCheck />,
+          label: t('Payment claims to verify'),
+          n: a.pending_claims,
+        }
+      : null,
+    a.pending_drafts
+      ? {
+          to: '/admin/expenses',
+          icon: <Receipt />,
+          label: t('Recurring expenses to confirm'),
+          n: a.pending_drafts,
+        }
+      : null,
+    a.open_concerns
+      ? { to: '/concerns', icon: <MessageSquareWarning />, label: t('Open concerns'), n: a.open_concerns }
+      : null,
+    a.pending_registrations
+      ? {
+          to: '/admin/members',
+          icon: <UserPlus />,
+          label: t('Registrations to approve'),
+          n: a.pending_registrations,
+        }
+      : null,
+    a.open_alerts
+      ? { to: '/admin/alerts', icon: <AlertTriangle />, label: t('Security alerts'), n: a.open_alerts }
+      : null,
+    a.suggested_contacts
+      ? { to: '/contacts', icon: <UserPlus />, label: t('Contact suggestions'), n: a.suggested_contacts }
+      : null,
   ].filter(Boolean) as { to: string; icon: React.ReactNode; label: string; n: number; urgent?: boolean }[];
   if (!items.length) return null;
   return (
@@ -258,10 +352,20 @@ function AdminAttention({ d, monthlyOn }: { d: Dashboard; monthlyOn: boolean }) 
       <SectionTitle>{t('Needs your attention')}</SectionTitle>
       <Card className="divide-y">
         {items.map((i) => (
-          <Link key={i.to + i.label} to={i.to} className="flex min-h-[56px] items-center gap-3 px-4 transition-colors hover:bg-secondary/50">
-            <span className={i.urgent ? 'text-warning [&_svg]:size-5' : 'text-primary [&_svg]:size-5'}>{i.icon}</span>
+          <Link
+            key={i.to + i.label}
+            to={i.to}
+            className="flex min-h-[56px] items-center gap-3 px-4 transition-colors hover:bg-secondary/50"
+          >
+            <span className={i.urgent ? 'text-warning [&_svg]:size-5' : 'text-primary [&_svg]:size-5'}>
+              {i.icon}
+            </span>
             <span className="flex-1 text-sm font-semibold">{i.label}</span>
-            {i.n > 0 && <span className="grid min-w-7 place-items-center rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">{i.n}</span>}
+            {i.n > 0 && (
+              <span className="grid min-w-7 place-items-center rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">
+                {i.n}
+              </span>
+            )}
             <ArrowRight className="size-4 text-muted-foreground" />
           </Link>
         ))}
@@ -282,30 +386,108 @@ function NextMeetingCard() {
   const q = useNextMeeting(m.societyId);
   if (!q.data) return null;
   const x = q.data;
+  const today = istToday();
+  const when =
+    x.meeting_date === today
+      ? t('Today')
+      : x.meeting_date === addDays(today, 1)
+        ? t('Tomorrow')
+        : formatDate(x.meeting_date);
   return (
-    <Link to={`/meetings/${x.id}`} className="block">
-      <Card className="p-4 transition-colors hover:bg-secondary/40">
-        <div className="flex items-center gap-2">
-          <CalendarClock className="size-4 text-primary" />
-          <p className="text-[12.5px] font-semibold text-primary">{t('Next meeting')}</p>
+    <Card className="overflow-hidden border-lime-300/60 p-0 shadow-card">
+      <Link
+        to={`/meetings/${x.id}`}
+        className="block bg-gradient-to-r from-emerald-600 to-emerald-500 px-4 py-3 text-white"
+      >
+        <div className="flex items-center gap-2 text-[12.5px] font-semibold text-white/90">
+          <CalendarClock className="size-4" /> {t('Meeting called')}
         </div>
-        <p className="mt-1 font-bold">{x.title}</p>
-        <p className="text-[13px] text-muted-foreground">
-          {formatDate(x.meeting_date)} · {timeLabel(x.start_time)} · {x.audience_label}
+        <p className="mt-0.5 text-[17px] font-extrabold leading-snug">{x.title}</p>
+        <p className="text-[13px] text-white/90">
+          {when} · {timeLabel(x.start_time)}
+          {x.location ? ` · ${x.location}` : ''}
         </p>
-        {x.agenda.length > 0 && (
-          <p className="mt-2 truncate text-[12.5px] text-muted-foreground">
-            {t('Agenda')}: {x.agenda.map((a) => a.text).join(' · ')}
-          </p>
-        )}
-      </Card>
-    </Link>
+        <p className="text-[12px] text-white/75">{t('Expected: {{a}}', { a: x.audience_label })}</p>
+      </Link>
+      <div className="p-4">
+        <p className="mb-2 text-[12.5px] font-bold uppercase tracking-wide text-muted-foreground">
+          {t('Agenda')}
+        </p>
+        <MeetingAgenda meeting={x} limit={5} />
+        <Link to={`/meetings/${x.id}`} className="mt-3 block text-center text-[13px] font-bold text-primary">
+          {t('Open meeting details')} →
+        </Link>
+      </div>
+    </Card>
+  );
+}
+
+function ImportantNumbersCard() {
+  const { t } = useTranslation();
+  const m = useMember();
+  const nav = useNavigate();
+  const [q, setQ] = useState('');
+  const dir = useDirectory(m.societyId);
+  const cats = useContactCategories(m.societyId);
+  const counts = new Map<string, number>();
+  for (const c of dir.data ?? [])
+    if (c.status === 'active') counts.set(c.category_id, (counts.get(c.category_id) ?? 0) + 1);
+  const tags = (cats.data ?? []).filter((c) => counts.has(c.id)).slice(0, 6);
+  const total = [...counts.values()].reduce((s, n) => s + n, 0);
+  const go = (e: React.FormEvent) => {
+    e.preventDefault();
+    nav(q.trim() ? `/contacts?q=${encodeURIComponent(q.trim())}` : '/contacts');
+  };
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="grid size-9 place-items-center rounded-xl bg-secondary text-primary">
+            <Phone className="size-[18px]" />
+          </span>
+          <div>
+            <p className="font-bold leading-tight">{t('Important numbers')}</p>
+            <p className="text-[12px] text-muted-foreground">
+              {total ? t('{{n}} trusted contacts', { n: total }) : t('Plumber, electrician, tank cleaner…')}
+            </p>
+          </div>
+        </div>
+        <Link to="/contacts" className="text-[13px] font-bold text-primary">
+          {t('View all')}
+        </Link>
+      </div>
+      <form onSubmit={go} className="relative mt-3">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t('Search plumber, electrician, name…')}
+          className="pl-10"
+          aria-label={t('Search')}
+        />
+      </form>
+      {tags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {tags.map((c) => (
+            <Link
+              key={c.id}
+              to={`/contacts?category=${c.id}`}
+              className="rounded-full border bg-card px-3 py-1.5 text-[12.5px] font-semibold hover:bg-secondary"
+            >
+              {t(c.name)} · {counts.get(c.id)}
+            </Link>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
 function MonthProgress({ d }: { d: Dashboard }) {
   const { t } = useTranslation();
-  const pct = d.month.expected_paise ? Math.min(100, Math.round((d.month.collected_paise / d.month.expected_paise) * 100)) : 0;
+  const pct = d.month.expected_paise
+    ? Math.min(100, Math.round((d.month.collected_paise / d.month.expected_paise) * 100))
+    : 0;
   const c = d.month.status_counts;
   const net = d.month.collected_paise - d.month.spent_paise;
   return (
@@ -315,12 +497,22 @@ function MonthProgress({ d }: { d: Dashboard }) {
           <p className="font-bold">{t('{{m}} collection', { m: periodLabel(d.period) })}</p>
           <span className="text-[13px] font-semibold text-primary">{pct}%</span>
         </div>
-        <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-500 to-lime-400 transition-all" style={{ width: `${pct}%` }} />
+        <div
+          className="mt-3 h-3 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-500 to-lime-400 transition-all"
+            style={{ width: `${pct}%` }}
+          />
         </div>
         <div className="tabular mt-2 flex justify-between text-[13px]">
           <span>
-            <strong>{formatINR(d.month.collected_paise)}</strong> <span className="text-muted-foreground">{t('collected')}</span>
+            <strong>{formatINR(d.month.collected_paise)}</strong>{' '}
+            <span className="text-muted-foreground">{t('collected')}</span>
           </span>
           <span className="text-muted-foreground">
             {t('of')} {formatINR(d.month.expected_paise)}
@@ -342,9 +534,11 @@ function MonthProgress({ d }: { d: Dashboard }) {
           ))}
         </div>
         <p className="mt-3 text-[12.5px] text-muted-foreground">
-          {t('Spent this month')}: <strong className="text-foreground">{formatINR(d.month.spent_paise)}</strong>
+          {t('Spent this month')}:{' '}
+          <strong className="text-foreground">{formatINR(d.month.spent_paise)}</strong>
           {' · '}
-          {net >= 0 ? t('Surplus') : t('Shortfall')}: <Money paise={net} sign tone="auto" className="font-semibold" />
+          {net >= 0 ? t('Surplus') : t('Shortfall')}:{' '}
+          <Money paise={net} sign tone="auto" className="font-semibold" />
         </p>
       </Card>
     </Link>
@@ -375,7 +569,9 @@ function EnableExtras() {
           <p className="font-bold">{t('Get notices and receipts instantly')}</p>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
             {isIOS() && !isStandalone()
-              ? t('On iPhone: tap Share, then "Add to Home Screen". Open Harmony from your home screen to turn on notifications.')
+              ? t(
+                  'On iPhone: tap Share, then "Add to Home Screen". Open Harmony from your home screen to turn on notifications.',
+                )
               : t('Install the app and allow notifications on this phone.')}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -395,7 +591,10 @@ function EnableExtras() {
                   setBusy(false);
                   void status.refetch();
                   if (r === 'granted') toast.success(t('Notifications are on for this device'));
-                  else toast.error(t('Notifications were blocked. You can allow them in your browser settings.'));
+                  else
+                    toast.error(
+                      t('Notifications were blocked. You can allow them in your browser settings.'),
+                    );
                 }}
               >
                 <BellRing /> {t('Allow notifications')}
@@ -417,4 +616,3 @@ function EnableExtras() {
     </Card>
   );
 }
-

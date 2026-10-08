@@ -245,6 +245,8 @@ export async function shareOrDownloadPdf(blob: Blob, filename: string, text?: st
 
 export interface StatementLine {
   date: string;
+  /** flat code that paid / was charged; when any line has one the statement gets a Flat column */
+  flat?: string;
   description: string;
   ref: string;
   /** first / second amount column (paise) */
@@ -304,29 +306,42 @@ export async function statementPdf(o: {
   const totalA = o.lines.reduce((s, l) => s + l.a, 0);
   const totalB = o.lines.reduce((s, l) => s + l.b, 0);
   const closing = o.opening + o.lines.reduce((s, l) => s + l.delta, 0);
-  const body: (string | number)[][] = [['', 'Opening balance', '', '', '', bal(o.opening)]];
+  const withFlat = o.lines.some((l) => l.flat !== undefined);
+  const row = (date: string, flat: string, desc: string, ref: string, a: string, b: string, bl: string): string[] =>
+    withFlat ? [date, flat, desc, ref, a, b, bl] : [date, desc, ref, a, b, bl];
+  const body: (string | number)[][] = [row('', '', 'Opening balance', '', '', '', bal(o.opening))];
   for (const l of o.lines) {
     run += l.delta;
-    body.push([formatDate(l.date), l.description, l.ref, l.a ? num(l.a) : '', l.b ? num(l.b) : '', bal(run)]);
+    body.push(row(formatDate(l.date), l.flat ?? '', l.description, l.ref, l.a ? num(l.a) : '', l.b ? num(l.b) : '', bal(run)));
   }
-  body.push(['', 'Total for the period', '', num(totalA), num(totalB), '']);
-  body.push(['', 'Closing balance', '', '', '', bal(closing)]);
+  body.push(row('', '', 'Total for the period', '', num(totalA), num(totalB), ''));
+  body.push(row('', '', 'Closing balance', '', '', '', bal(closing)));
 
   autoTable(doc, {
     startY: 38,
-    head: [['Date', 'Particulars', 'Ref', `${o.headA} (Rs.)`, `${o.headB} (Rs.)`, 'Balance (Rs.)']],
+    head: [withFlat ? ['Date', 'Flat', 'Particulars', 'Receipt / Ref', `${o.headA} (Rs.)`, `${o.headB} (Rs.)`, 'Balance (Rs.)'] : ['Date', 'Particulars', 'Receipt / Ref', `${o.headA} (Rs.)`, `${o.headB} (Rs.)`, 'Balance (Rs.)']],
     body,
     theme: 'striped',
     headStyles: { fillColor: [5, 150, 105], fontSize: 8.5 },
     styles: { fontSize: 8, cellPadding: 1.6, overflow: 'linebreak' },
-    columnStyles: {
-      0: { cellWidth: 21 },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 26 },
-      3: { halign: 'right', cellWidth: 25 },
-      4: { halign: 'right', cellWidth: 25 },
-      5: { halign: 'right', cellWidth: 30, fontStyle: 'bold' },
-    },
+    columnStyles: withFlat
+      ? {
+          0: { cellWidth: 20 },
+          1: { cellWidth: 14, fontStyle: 'bold' },
+          2: { cellWidth: 'auto' },
+          3: { cellWidth: 29 },
+          4: { halign: 'right', cellWidth: 21 },
+          5: { halign: 'right', cellWidth: 21 },
+          6: { halign: 'right', cellWidth: 25, fontStyle: 'bold' },
+        }
+      : {
+          0: { cellWidth: 21 },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 29 },
+          3: { halign: 'right', cellWidth: 25 },
+          4: { halign: 'right', cellWidth: 25 },
+          5: { halign: 'right', cellWidth: 30, fontStyle: 'bold' },
+        },
     margin: { left: 10, right: 10, bottom: 16 },
     didParseCell: (d) => {
       const first = d.row.index === 0;

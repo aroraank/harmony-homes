@@ -65,10 +65,11 @@ export function StatementDialog({
         const s = await rpc<LedgerStatement>('ledger_statement', { p_society: m.societyId, p_from: range.from, p_to: range.to, p_fund_id: fundId || null });
         const lines: StatementLine[] = s.rows.map((r) => ({
           date: r.date,
+          flat: r.unit_code ?? '',
           description:
-            [categoryLabel(r.category, cats.data), r.unit_code, r.payee, r.fund, r.note].filter(Boolean).join(' · ') +
+            [categoryLabel(r.category, cats.data), r.payee, r.fund, r.mode ? (MODE_LABELS[r.mode] ?? r.mode) : '', r.reference_no ? `UTR ${r.reference_no}` : '', r.note].filter(Boolean).join(' · ') +
             (r.is_reversed ? ' [CANCELLED]' : '') + (r.is_reversal ? ' [REVERSAL]' : ''),
-          ref: r.receipt_no ?? r.reference_no ?? (r.mode ? (MODE_LABELS[r.mode] ?? r.mode) : ''),
+          ref: r.receipt_no ?? '',
           a: r.direction === 'credit' ? r.amount_paise : 0,
           b: r.direction === 'debit' ? r.amount_paise : 0,
           delta: r.direction === 'credit' ? r.amount_paise : -r.amount_paise,

@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, FileDown, Filter, ReceiptText, RotateCcw, Search, Undo2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, FileDown, Filter, ReceiptText, RotateCcw, Search, ShieldCheck, Undo2 } from 'lucide-react';
+import { ReceiptLookup } from '@/components/ReceiptLookup';
 import { toast } from 'sonner';
 import { addMonths, currentPeriod, formatDate, formatDateTime, formatINR, periodEnd, periodLabel, periodStart } from '@/lib/format';
 import { useMember } from '@/lib/auth';
 import { errorMessage, newIdemKey, rpc, supabase } from '@/lib/supabase';
-import { invalidateMoney, unwrap, useExpenseCategories, useFunds } from '@/lib/queries';
+import { invalidateMoney, unwrap, useExpenseCategories, useFunds, useUnits } from '@/lib/queries';
 import { categoryLabel, cn, MODE_LABELS } from '@/lib/utils';
 import { downloadCsv, rupees } from '@/lib/csv';
 import { useOnline } from '@/lib/online';
@@ -31,6 +32,11 @@ export default function LedgerPage() {
   const m = useMember();
   const funds = useFunds(m.societyId);
   const cats = useExpenseCategories(m.societyId);
+  const units = useUnits(m.societyId);
+  const hasFlat = !!m.unit_id;
+  const [scopeSel, setScope] = useState<'me' | 'society' | null>(null);
+  const scope: 'me' | 'society' = scopeSel ?? (hasFlat ? 'me' : 'society');
+  const [flat, setFlat] = useState('');
   const [fund, setFund] = useState('');
   const [dir, setDir] = useState<'' | 'credit' | 'debit'>('');
   const [period, setPeriod] = useState('');
@@ -39,11 +45,14 @@ export default function LedgerPage() {
   const [selected, setSelected] = useState<LedgerRow | null>(null);
   const [exporting, setExporting] = useState(false);
   const [stmtOpen, setStmtOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
 
   const periods = useMemo(() => Array.from({ length: 18 }, (_, i) => addMonths(currentPeriod(), -i)), []);
 
   const buildQuery = () => {
     let q = supabase.from('v_ledger').select('*').eq('society_id', m.societyId);
+    if (scope === 'me') q = q.eq('unit_id', m.unit_id as string);
+    else if (flat) q = q.eq('unit_id', flat);
     if (fund) q = q.eq('fund_id', fund);
     if (dir) q = q.eq('direction', dir);
     if (period) q = q.gte('entry_date', periodStart(period)).lte('entry_date', periodEnd(period));
@@ -53,7 +62,7 @@ export default function LedgerPage() {
   };
 
   const q = useInfiniteQuery({
-    queryKey: ['ledger', m.societyId, fund, dir, period, search],
+    queryKey: ['ledger', m.societyId, scope, flat, fund, dir, period, search],
     initialPageParam: 0,
     queryFn: async ({ pageParam }) => unwrap<LedgerRow[]>(await buildQuery().range(pageParam, pageParam + PAGE - 1)),
     getNextPageParam: (last, all) => (last.length === PAGE ? all.length * PAGE : undefined),
@@ -96,7 +105,7 @@ export default function LedgerPage() {
     }
   };
 
-  const activeFilters = [fund, dir, period].filter(Boolean).length;
+  const activeFilters = [fund, dir, period, scope === 'society' ? flat : ''].filter(Boolean).length;
 
   return (
     <div className="animate-fade-up">
@@ -105,6 +114,9 @@ export default function LedgerPage() {
         subtitle={t('Every rupee in and out — entries are never edited or deleted')}
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" size="icon" onClick={() => setLookupOpen(true)} aria-label={t('Verify a receipt')}>
+              <ShieldCheck />
+            </Button>
             <Button variant="outline" size="icon" onClick={() => setStmtOpen(true)} aria-label={t('Download PDF statement')}>
               <FileDown />
             </Button>
@@ -116,6 +128,16 @@ export default function LedgerPage() {
           </div>
         }
       />
+      {hasFlat && (
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-2xl bg-muted p-1" role="tablist">
+          {([['me', t('My ledger')], ['society', t('Society ledger')]] as const).map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={scope === k} onClick={() => setScope(k)}
+              className={`cursor-pointer rounded-xl py-2.5 text-[13.5px] font-bold transition-colors ${scope === k ? 'bg-card text-foreground shadow-card' : 'text-muted-foreground'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="mb-3 flex gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
@@ -127,6 +149,16 @@ export default function LedgerPage() {
       </div>
       {showFilters && (
         <div className="mb-3 grid grid-cols-1 gap-2 rounded-2xl border bg-card p-3 sm:grid-cols-3">
+          {scope === 'society' && (
+            <NativeSelect value={flat} onChange={(e) => setFlat(e.target.value)} aria-label={t('Flat')} className="sm:col-span-3">
+              <option value="">{t('All flats')}</option>
+              {units.data?.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.code}
+                </option>
+              ))}
+            </NativeSelect>
+          )}
           <NativeSelect value={period} onChange={(e) => setPeriod(e.target.value)} aria-label={t('Month')}>
             <option value="">{t('All months')}</option>
             {periods.map((p) => (
@@ -149,7 +181,7 @@ export default function LedgerPage() {
             <option value="debit">{t('Money out (debits)')}</option>
           </NativeSelect>
           {activeFilters > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => (setFund(''), setDir(''), setPeriod(''))} className="sm:col-span-3">
+            <Button variant="ghost" size="sm" onClick={() => (setFund(''), setDir(''), setPeriod(''), setFlat(''))} className="sm:col-span-3">
               <RotateCcw /> {t('Clear filters')}
             </Button>
           )}
@@ -183,6 +215,7 @@ export default function LedgerPage() {
       )}
 
       <EntrySheet entry={selected} onClose={() => setSelected(null)} cats={cats.data} />
+      <ReceiptLookup open={lookupOpen} onOpenChange={setLookupOpen} />
       <StatementDialog open={stmtOpen} onOpenChange={setStmtOpen} kind="ledger" fundId={fund || undefined} />
     </div>
   );

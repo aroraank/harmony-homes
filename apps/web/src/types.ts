@@ -276,6 +276,8 @@ export interface EventReport {
     unit_code: string | null;
     payee: string | null;
     note: string | null;
+    receipt_no?: string | null;
+    mode?: string | null;
     is_reversed: boolean;
     is_reversal: boolean;
   }[];
@@ -527,6 +529,15 @@ export interface AlertRow {
   resolved_at: string | null;
 }
 
+export interface AgendaItem {
+  id: string;
+  text: string;
+  status: 'approved' | 'suggested';
+  /** "Name · P3-FF" of the member who suggested it; null for points written by admins */
+  by: string | null;
+  mine: boolean;
+}
+
 export interface Meeting {
   id: string;
   society_id: string;
@@ -544,6 +555,6 @@ export interface Meeting {
   created_at: string;
   updated_at: string;
   audience_label: string;
-  agenda: { id: string; text: string }[];
+  agenda: AgendaItem[];
   created_by_name: string | null;
 }

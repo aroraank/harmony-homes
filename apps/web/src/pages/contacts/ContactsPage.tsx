@@ -1,98 +1,178 @@
-import { PhoneInput } from '@/components/PhoneInput';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Archive, Check, Clock, MessageCircle, Pencil, Phone, Plus, Search, ShieldCheck, UserPlus, X } from 'lucide-react';
+import {
+  Archive,
+  Check,
+  Clock,
+  MessageCircle,
+  Pencil,
+  Phone,
+  Plus,
+  Search,
+  ShieldCheck,
+  Trash2,
+  UserRound,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { MOBILE_RE, normalizeMobile } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc, supabase } from '@/lib/supabase';
 import { unwrap, useContactCategories } from '@/lib/queries';
-import { whatsappLink } from '@/lib/utils';
+import { cn, whatsappLink } from '@/lib/utils';
+import { PhoneInput } from '@/components/PhoneInput';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { EmptyState, QueryState } from '@/components/States';
 import { Field } from '@/components/Field';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input, NativeSelect, Textarea } from '@/components/ui/input';
+import { Input, Textarea } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { Contact } from '@/types';
+import { ConfirmSheet } from '@/components/ConfirmSheet';
 
-type Committee = { user_id: string; role: string; profiles: { full_name: string; phone: string | null } | null };
-type Form = Partial<Contact> & { open: boolean; mode: 'add' | 'edit' | 'suggest' };
+export type DirContact = {
+  id: string;
+  category_id: string;
+  category: string;
+  name: string;
+  phones: string[];
+  whatsapp: boolean;
+  notes: string | null;
+  timings: string | null;
+  typical_rate: string | null;
+  status: 'active' | 'suggested';
+  added_by: string | null;
+  added_by_label: string | null;
+  added_at: string;
+  can_edit: boolean;
+};
+type Committee = {
+  user_id: string;
+  role: string;
+  profiles: { full_name: string; phone: string | null } | null;
+};
+type Form = {
+  open: boolean;
+  id: string | null;
+  category_id: string;
+  name: string;
+  phones: string[];
+  whatsapp: boolean;
+  notes: string;
+  timings: string;
+  rate: string;
+};
+const EMPTY: Form = {
+  open: false,
+  id: null,
+  category_id: '',
+  name: '',
+  phones: [''],
+  whatsapp: true,
+  notes: '',
+  timings: '',
+  rate: '',
+};
+const MAX_PHONES = 5;
 
+export function useDirectory(societyId: string) {
+  return useQuery({
+    queryKey: ['contacts', societyId],
+    queryFn: () => rpc<DirContact[]>('contact_directory', { p_society: societyId }),
+  });
+}
+
+/** Society directory of plumbers, electricians etc. Any member can add; each entry shows who added it. */
 export default function ContactsPage() {
   const { t } = useTranslation();
   const m = useMember();
   const qc = useQueryClient();
   const [params] = useSearchParams();
   const cats = useContactCategories(m.societyId);
+  const dir = useDirectory(m.societyId);
   const [category, setCategory] = useState(params.get('category') ?? '');
-  const [search, setSearch] = useState('');
-  const [form, setForm] = useState<Form>({ open: false, mode: 'add' });
+  const [search, setSearch] = useState(params.get('q') ?? '');
+  const [form, setForm] = useState<Form>(EMPTY);
   const [catForm, setCatForm] = useState<{ open: boolean; name: string }>({ open: false, name: '' });
+  const [removing, setRemoving] = useState<DirContact | null>(null);
   const [busy, setBusy] = useState(false);
   const canManage = m.can('manage_contacts');
 
-  const contacts = useQuery({
-    queryKey: ['contacts', m.societyId],
-    queryFn: async () => unwrap<Contact[]>(await supabase.from('contacts').select('*').eq('society_id', m.societyId).in('status', ['active', 'suggested']).order('name')),
-  });
   const committee = useQuery({
     queryKey: ['committee', m.societyId],
     queryFn: async () =>
       unwrap<Committee[]>(
-        await supabase.from('memberships').select('user_id, role, profiles!memberships_user_id_fkey(full_name, phone)').eq('society_id', m.societyId).eq('status', 'active').in('role', ['admin', 'super_admin']),
+        await supabase
+          .from('memberships')
+          .select('user_id, role, profiles!memberships_user_id_fkey(full_name, phone)')
+          .eq('society_id', m.societyId)
+          .eq('status', 'active')
+          .in('role', ['admin', 'super_admin']),
       ),
   });
 
-  const catName = useMemo(() => Object.fromEntries((cats.data ?? []).map((c) => [c.id, c.name])), [cats.data]);
-  const pinnedIds = new Set((cats.data ?? []).filter((c) => c.is_pinned).map((c) => c.id));
-
-  const filtered = (contacts.data ?? []).filter(
+  const all = useMemo(() => dir.data ?? [], [dir.data]);
+  const tagCounts = useMemo(() => {
+    const c = new Map<string, number>();
+    for (const x of all) if (x.status === 'active') c.set(x.category_id, (c.get(x.category_id) ?? 0) + 1);
+    return c;
+  }, [all]);
+  const shownCats = (cats.data ?? []).filter((c) => tagCounts.has(c.id) || c.id === category);
+  const q = search.trim().toLowerCase();
+  const list = all.filter(
     (c) =>
       c.status === 'active' &&
       (!category || c.category_id === category) &&
-      (!search || `${c.name} ${c.phone} ${c.notes ?? ''} ${catName[c.category_id] ?? ''}`.toLowerCase().includes(search.toLowerCase())),
+      (!q ||
+        `${c.name} ${c.phones.join(' ')} ${c.notes ?? ''} ${c.category} ${c.added_by_label ?? ''}`
+          .toLowerCase()
+          .includes(q)),
   );
-  const suggestions = (contacts.data ?? []).filter((c) => c.status === 'suggested' && (canManage || c.added_by === m.userId));
-  const groups = (cats.data ?? [])
-    .map((cat) => ({ cat, list: filtered.filter((c) => c.category_id === cat.id) }))
-    .filter((g) => g.list.length)
-    .sort((a, b) => Number(pinnedIds.has(b.cat.id)) - Number(pinnedIds.has(a.cat.id)) || a.cat.sort_order - b.cat.sort_order);
+  const suggestions = all.filter((c) => c.status === 'suggested');
+
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['contacts'] });
+
+  const openAdd = () => setForm({ ...EMPTY, open: true, category_id: category });
+  const openEdit = (c: DirContact) =>
+    setForm({
+      open: true,
+      id: c.id,
+      category_id: c.category_id,
+      name: c.name,
+      phones: c.phones.length ? c.phones : [''],
+      whatsapp: c.whatsapp,
+      notes: c.notes ?? '',
+      timings: c.timings ?? '',
+      rate: c.typical_rate ?? '',
+    });
 
   const save = async () => {
-    const phone = normalizeMobile(form.phone ?? '');
-    const alt = form.alt_phone ? normalizeMobile(form.alt_phone) : '';
-    if (!form.category_id) return toast.error(t('Choose a category'));
-    if ((form.name ?? '').trim().length < 2) return toast.error(t('Name must be 2–60 characters.'));
-    if (!MOBILE_RE.test(phone)) return toast.error(t('Enter a valid 10-digit Indian mobile number'));
-    if (alt && !MOBILE_RE.test(alt)) return toast.error(t('Alternate number is not valid'));
+    const phones = form.phones.map((p) => normalizeMobile(p)).filter(Boolean);
+    if (!form.category_id) return toast.error(t('Choose a job tag'));
+    if (form.name.trim().length < 2) return toast.error(t('Name must be 2–60 characters.'));
+    if (phones.length === 0) return toast.error(t('Add at least one phone number.'));
+    if (phones.some((p) => !MOBILE_RE.test(p))) return toast.error(t('Enter valid 10-digit mobile numbers'));
+    if (new Set(phones).size !== phones.length) return toast.error(t('The same number is entered twice'));
     setBusy(true);
     try {
-      if (form.mode === 'suggest') {
-        await rpc('suggest_contact', { p_society: m.societyId, p_category_id: form.category_id, p_name: form.name, p_phone: phone, p_notes: form.notes ?? null });
-        toast.success(t('Thanks! The admin will review your suggestion.'));
-      } else {
-        await rpc('upsert_contact', {
-          p_society: m.societyId,
-          p_id: form.mode === 'edit' ? form.id : null,
-          p_category_id: form.category_id,
-          p_name: form.name,
-          p_phone: phone,
-          p_alt_phone: alt || null,
-          p_whatsapp: form.whatsapp ?? true,
-          p_notes: form.notes ?? null,
-          p_timings: form.timings ?? null,
-          p_typical_rate: form.typical_rate ?? null,
-        });
-        toast.success(t('Contact saved'));
-      }
-      setForm({ open: false, mode: 'add' });
-      void qc.invalidateQueries({ queryKey: ['contacts'] });
+      const args = {
+        p_category_id: form.category_id,
+        p_name: form.name,
+        p_phones: phones,
+        p_notes: form.notes || null,
+        p_timings: form.timings || null,
+        p_typical_rate: form.rate || null,
+        p_whatsapp: form.whatsapp,
+      };
+      if (form.id) await rpc('update_contact', { p_contact_id: form.id, ...args });
+      else await rpc('add_contact', { p_society: m.societyId, ...args });
+      toast.success(form.id ? t('Contact updated') : t('Contact added'));
+      setForm(EMPTY);
+      refresh();
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -104,16 +184,38 @@ export default function ContactsPage() {
     try {
       await rpc(fn, args);
       toast.success(msg);
-      void qc.invalidateQueries({ queryKey: ['contacts'] });
+      refresh();
     } catch (e) {
       toast.error(errorMessage(e));
     }
   };
 
+  const remove = async () => {
+    if (!removing) return;
+    setBusy(true);
+    try {
+      await rpc('archive_contact', { p_contact_id: removing.id });
+      toast.success(t('Contact removed'));
+      setRemoving(null);
+      refresh();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addCategory = async () => {
     try {
-      await rpc('upsert_contact_category', { p_society: m.societyId, p_id: null, p_name: catForm.name, p_sort_order: 50, p_is_pinned: false });
-      void qc.invalidateQueries({ queryKey: ['contactCategories'] });
+      const id = await rpc<string>('upsert_contact_category', {
+        p_society: m.societyId,
+        p_id: null,
+        p_name: catForm.name,
+        p_sort_order: 50,
+        p_is_pinned: false,
+      });
+      await qc.invalidateQueries({ queryKey: ['contactCategories'] });
+      setForm((f) => ({ ...f, category_id: id }));
       setCatForm({ open: false, name: '' });
     } catch (e) {
       toast.error(errorMessage(e));
@@ -123,37 +225,41 @@ export default function ContactsPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        title={t('Contacts')}
-        subtitle={t('Trusted help for the society')}
+        title={t('Important numbers')}
+        subtitle={t('Plumber, electrician, tank cleaner and more, added by members')}
         back="/more"
         actions={
-          canManage ? (
-            <Button size="sm" onClick={() => setForm({ open: true, mode: 'add', whatsapp: true, category_id: category || undefined })}>
-              <Plus /> {t('Add')}
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" onClick={() => setForm({ open: true, mode: 'suggest', category_id: category || undefined })}>
-              <UserPlus /> {t('Suggest')}
-            </Button>
-          )
+          <Button size="sm" onClick={openAdd}>
+            <Plus /> {t('Add')}
+          </Button>
         }
       />
-      <div className="mb-3 flex gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Search name or service')} className="pl-10" aria-label={t('Search')} />
-        </div>
-        <NativeSelect value={category} onChange={(e) => setCategory(e.target.value)} className="w-40" aria-label={t('Category')}>
-          <option value="">{t('All')}</option>
-          {cats.data?.map((c) => (
-            <option key={c.id} value={c.id}>
-              {t(c.name)}
-            </option>
-          ))}
-        </NativeSelect>
+      <div className="relative mb-3">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('Search name, job or number')}
+          className="pl-10"
+          aria-label={t('Search')}
+        />
+      </div>
+      <div className="no-scrollbar -mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1">
+        <TagChip active={!category} onClick={() => setCategory('')}>
+          {t('All')} · {all.filter((c) => c.status === 'active').length}
+        </TagChip>
+        {shownCats.map((c) => (
+          <TagChip
+            key={c.id}
+            active={category === c.id}
+            onClick={() => setCategory(category === c.id ? '' : c.id)}
+          >
+            {t(c.name)} · {tagCounts.get(c.id) ?? 0}
+          </TagChip>
+        ))}
       </div>
 
-      {!category && !search && (committee.data ?? []).length > 0 && (
+      {!category && !q && (committee.data ?? []).length > 0 && (
         <>
           <SectionTitle>{t('Admins / committee')}</SectionTitle>
           <div className="space-y-2">
@@ -161,9 +267,9 @@ export default function ContactsPage() {
               <ContactCard
                 key={a.user_id}
                 name={a.profiles?.full_name ?? ''}
-                phone={a.profiles?.phone ?? null}
+                phones={a.profiles?.phone ? [a.profiles.phone] : []}
                 whatsapp
-                sub={a.role === 'super_admin' ? t('Super admin') : t('Admin')}
+                tag={a.role === 'super_admin' ? t('Super admin') : t('Admin')}
                 icon={<ShieldCheck className="size-5" />}
               />
             ))}
@@ -178,18 +284,39 @@ export default function ContactsPage() {
             {suggestions.map((c) => (
               <Card key={c.id} className="p-3.5">
                 <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">{c.name}</p>
-                    <p className="tabular text-[12.5px] text-muted-foreground">
-                      {t(catName[c.category_id] ?? '')} · {c.phone}
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{c.name}</p>
+                    <p className="tabular truncate text-[12.5px] text-muted-foreground">
+                      {t(c.category)} · {c.phones.join(', ')}
                     </p>
                   </div>
                   {canManage ? (
                     <div className="flex gap-1.5">
-                      <Button size="icon-sm" onClick={() => act('review_contact', { p_contact_id: c.id, p_approve: true }, t('Contact approved'))} aria-label={t('Approve')}>
+                      <Button
+                        size="icon-sm"
+                        onClick={() =>
+                          act(
+                            'review_contact',
+                            { p_contact_id: c.id, p_approve: true },
+                            t('Contact approved'),
+                          )
+                        }
+                        aria-label={t('Approve')}
+                      >
                         <Check />
                       </Button>
-                      <Button size="icon-sm" variant="outline" onClick={() => act('review_contact', { p_contact_id: c.id, p_approve: false }, t('Suggestion rejected'))} aria-label={t('Reject')}>
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        onClick={() =>
+                          act(
+                            'review_contact',
+                            { p_contact_id: c.id, p_approve: false },
+                            t('Suggestion rejected'),
+                          )
+                        }
+                        aria-label={t('Reject')}
+                      >
                         <X />
                       </Button>
                     </div>
@@ -205,100 +332,187 @@ export default function ContactsPage() {
         </>
       )}
 
-      <QueryState query={contacts} empty={() => (groups.length ? null : <EmptyState icon={<Phone className="size-7" />} title={t('No contacts yet')} hint={canManage ? t('Add the plumber, electrician, tank cleaner…') : t('Suggest a good plumber or electrician you know.')} />)}>
-        {() =>
-          groups.map(({ cat, list }) => (
-            <section key={cat.id}>
-              <SectionTitle>{t(cat.name)}</SectionTitle>
-              <div className="space-y-2">
-                {list.map((c) => (
-                  <ContactCard
-                    key={c.id}
-                    name={c.name}
-                    phone={c.phone}
-                    alt={c.alt_phone}
-                    whatsapp={c.whatsapp}
-                    sub={[c.timings, c.typical_rate, c.notes].filter(Boolean).join(' · ')}
-                    actions={
-                      canManage && (
-                        <>
-                          <Button size="icon-sm" variant="ghost" onClick={() => setForm({ ...c, open: true, mode: 'edit' })} aria-label={t('Edit')}>
-                            <Pencil />
-                          </Button>
-                          <Button size="icon-sm" variant="ghost" onClick={() => act('archive_contact', { p_contact_id: c.id }, t('Contact removed'))} aria-label={t('Remove')}>
-                            <Archive />
-                          </Button>
-                        </>
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </section>
-          ))
+      <SectionTitle>{q || category ? t('Results') : t('Everyone, A to Z')}</SectionTitle>
+      <QueryState
+        query={dir}
+        empty={() =>
+          list.length ? null : (
+            <EmptyState
+              icon={<Phone className="size-7" />}
+              title={q || category ? t('No matching contact') : t('No contacts yet')}
+              hint={t('Add a plumber, electrician or tank cleaner you trust, so neighbours can find them.')}
+            />
+          )
         }
+      >
+        {() => (
+          <div className="space-y-2">
+            {list.map((c) => (
+              <ContactCard
+                key={c.id}
+                name={c.name}
+                phones={c.phones}
+                whatsapp={c.whatsapp}
+                tag={t(c.category)}
+                sub={[c.timings, c.typical_rate, c.notes].filter(Boolean).join(' · ')}
+                addedBy={c.added_by_label}
+                actions={
+                  c.can_edit && (
+                    <>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        onClick={() => openEdit(c)}
+                        aria-label={t('Edit')}
+                      >
+                        <Pencil />
+                      </Button>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        onClick={() => setRemoving(c)}
+                        aria-label={t('Remove')}
+                      >
+                        <Archive />
+                      </Button>
+                    </>
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
       </QueryState>
 
-      <Dialog open={form.open} onOpenChange={(o) => !o && setForm({ open: false, mode: 'add' })}>
-        <DialogContent>
+      <Dialog open={form.open} onOpenChange={(o) => !o && !busy && setForm(EMPTY)}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{form.mode === 'edit' ? t('Edit contact') : form.mode === 'suggest' ? t('Suggest a contact') : t('Add contact')}</DialogTitle>
+            <DialogTitle>{form.id ? t('Edit contact') : t('Add contact')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <Field label={t('Category')}>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <NativeSelect value={form.category_id ?? ''} onChange={(e) => setForm((f) => ({ ...f, category_id: e.target.value }))}>
-                    <option value="">{t('Choose…')}</option>
-                    {cats.data?.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {t(c.name)}
-                      </option>
-                    ))}
-                  </NativeSelect>
+            <Field label={t('Job (choose one)')}>
+              <div>
+                <div className="flex flex-wrap gap-2">
+                  {(cats.data ?? []).map((c) => (
+                    <TagChip
+                      key={c.id}
+                      active={form.category_id === c.id}
+                      onClick={() => setForm((f) => ({ ...f, category_id: c.id }))}
+                    >
+                      {t(c.name)}
+                    </TagChip>
+                  ))}
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => setCatForm({ open: true, name: '' })}
+                      className="inline-flex min-h-9 cursor-pointer items-center gap-1 rounded-full border border-dashed px-3 text-[13px] font-semibold text-primary"
+                    >
+                      <Plus className="size-4" /> {t('New job')}
+                    </button>
+                  )}
                 </div>
-                {canManage && (
-                  <Button variant="outline" size="icon" onClick={() => setCatForm({ open: true, name: '' })} aria-label={t('Add category')}>
-                    <Plus />
-                  </Button>
+                {!canManage && (
+                  <p className="mt-1.5 text-[12px] text-muted-foreground">
+                    {t('Pick the closest job. Choose Other if none fits; an admin can add new jobs.')}
+                  </p>
                 )}
               </div>
             </Field>
             <Field label={t('Name')}>
-              <Input value={form.name ?? ''} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} maxLength={60} />
+              <Input
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                maxLength={60}
+              />
             </Field>
-            <Field label={t('Phone')}>
-              <PhoneInput value={form.phone ?? ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+            <Field label={t('Phone number(s)')}>
+              <div className="space-y-2">
+                {form.phones.map((p, i) => (
+                  <div key={i} className="flex gap-2">
+                    <div className="flex-1">
+                      <PhoneInput
+                        value={p}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            phones: f.phones.map((x, j) => (j === i ? e.target.value : x)),
+                          }))
+                        }
+                        placeholder={i === 0 ? t('Main number') : t('Another number')}
+                      />
+                    </div>
+                    {form.phones.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setForm((f) => ({ ...f, phones: f.phones.filter((_, j) => j !== i) }))}
+                        aria-label={t('Remove number')}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                {form.phones.length < MAX_PHONES && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setForm((f) => ({ ...f, phones: [...f.phones, ''] }))}
+                  >
+                    <Plus /> {t('Add another number')}
+                  </Button>
+                )}
+              </div>
             </Field>
-            {form.mode !== 'suggest' && (
-              <>
-                <Field label={t('Alternate phone')} optional>
-                  <PhoneInput value={form.alt_phone ?? ''} onChange={(e) => setForm((f) => ({ ...f, alt_phone: e.target.value }))} />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={t('Timings')} optional>
-                    <Input value={form.timings ?? ''} onChange={(e) => setForm((f) => ({ ...f, timings: e.target.value }))} maxLength={80} placeholder="9am–7pm" />
-                  </Field>
-                  <Field label={t('Typical rate')} optional>
-                    <Input value={form.typical_rate ?? ''} onChange={(e) => setForm((f) => ({ ...f, typical_rate: e.target.value }))} maxLength={80} placeholder="₹300/visit" />
-                  </Field>
-                </div>
-                <label className="flex min-h-11 cursor-pointer items-center justify-between">
-                  <span className="text-sm font-semibold">{t('On WhatsApp')}</span>
-                  <Switch checked={form.whatsapp ?? true} onCheckedChange={(v) => setForm((f) => ({ ...f, whatsapp: v }))} />
-                </label>
-              </>
+            <label className="flex min-h-11 cursor-pointer items-center justify-between">
+              <span className="text-sm font-semibold">{t('Main number is on WhatsApp')}</span>
+              <Switch
+                checked={form.whatsapp}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, whatsapp: v }))}
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('Timings')} optional>
+                <Input
+                  value={form.timings}
+                  onChange={(e) => setForm((f) => ({ ...f, timings: e.target.value }))}
+                  maxLength={80}
+                  placeholder="9am–7pm"
+                />
+              </Field>
+              <Field label={t('Typical rate')} optional>
+                <Input
+                  value={form.rate}
+                  onChange={(e) => setForm((f) => ({ ...f, rate: e.target.value }))}
+                  maxLength={80}
+                  placeholder="₹300/visit"
+                />
+              </Field>
+            </div>
+            <Field label={t('Your experience / notes')} optional>
+              <Textarea
+                rows={2}
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                maxLength={300}
+                placeholder={t('e.g. Did our tank cleaning, on time and tidy')}
+              />
+            </Field>
+            {!form.id && (
+              <p className="text-[12px] text-muted-foreground">
+                {t('Your name and flat are shown with this contact so neighbours can ask you about them.')}
+              </p>
             )}
-            <Field label={t('Area / notes')} optional>
-              <Textarea rows={2} value={form.notes ?? ''} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} maxLength={300} />
-            </Field>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setForm({ open: false, mode: 'add' })}>
+            <Button variant="outline" onClick={() => setForm(EMPTY)} disabled={busy}>
               {t('Cancel')}
             </Button>
             <Button onClick={save} loading={busy}>
-              {form.mode === 'suggest' ? t('Send suggestion') : t('Save')}
+              {t('Save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -307,11 +521,18 @@ export default function ContactsPage() {
       <Dialog open={catForm.open} onOpenChange={(o) => setCatForm((s) => ({ ...s, open: o }))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('New category')}</DialogTitle>
+            <DialogTitle>{t('New job')}</DialogTitle>
           </DialogHeader>
           <Field label={t('Name')}>
-            <Input value={catForm.name} onChange={(e) => setCatForm((s) => ({ ...s, name: e.target.value }))} maxLength={40} />
+            <Input
+              value={catForm.name}
+              onChange={(e) => setCatForm((s) => ({ ...s, name: e.target.value }))}
+              maxLength={40}
+            />
           </Field>
+          <p className="text-[12px] text-muted-foreground">
+            {t('Check the list first so the same job is not added twice, for example Plumber and Plumberr.')}
+          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCatForm({ open: false, name: '' })}>
               {t('Cancel')}
@@ -322,58 +543,112 @@ export default function ContactsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmSheet
+        open={!!removing}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={t('Remove this contact?')}
+        description={removing ? t('{{n}} will no longer show in the directory.', { n: removing.name }) : ''}
+        confirmLabel={t('Remove')}
+        destructive
+        loading={busy}
+        onConfirm={remove}
+      />
     </div>
+  );
+}
+
+function TagChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'inline-flex min-h-9 shrink-0 cursor-pointer items-center rounded-full border px-3.5 text-[13px] font-bold transition-colors',
+        active
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'bg-card text-muted-foreground hover:bg-secondary',
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
 function ContactCard({
   name,
-  phone,
-  alt,
+  phones,
   whatsapp,
+  tag,
   sub,
+  addedBy,
   icon,
   actions,
 }: {
   name: string;
-  phone: string | null;
-  alt?: string | null;
+  phones: string[];
   whatsapp?: boolean;
+  tag?: string;
   sub?: string;
+  addedBy?: string | null;
   icon?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
   const { t } = useTranslation();
   return (
-    <Card className="flex items-center gap-3 p-3.5">
-      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-secondary text-primary">{icon ?? <Phone className="size-5" />}</span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold">{name}</p>
-        <p className="tabular truncate text-[12.5px] text-muted-foreground">
-          {phone ?? t('No phone added')}
-          {alt ? ` · ${alt}` : ''}
-        </p>
-        {sub && <p className="truncate text-[12px] text-muted-foreground">{sub}</p>}
+    <Card className="p-3.5">
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+          {icon ?? <UserRound className="size-5" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="font-semibold">{name}</p>
+            {tag && <Badge variant="lime">{tag}</Badge>}
+          </div>
+          {sub && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{sub}</p>}
+          {addedBy && (
+            <p className="mt-0.5 text-[12px] text-muted-foreground">{t('Added by {{n}}', { n: addedBy })}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">{actions}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        {actions}
-        {phone && (
-          <>
-            {whatsapp && (
-              <Button asChild size="icon-sm" variant="outline" aria-label={t('WhatsApp {{n}}', { n: name })}>
-                <a href={whatsappLink(phone)} target="_blank" rel="noopener noreferrer">
-                  <MessageCircle />
+      {phones.length === 0 ? (
+        <p className="mt-2 text-[12.5px] text-muted-foreground">{t('No phone added')}</p>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {phones.map((p, i) => (
+            <div key={p} className="flex items-center gap-1">
+              <Button asChild size="sm" aria-label={t('Call {{n}}', { n: p })}>
+                <a href={`tel:+91${p}`}>
+                  <Phone /> <span className="tabular">{p}</span>
                 </a>
               </Button>
-            )}
-            <Button asChild size="icon-sm" aria-label={t('Call {{n}}', { n: name })}>
-              <a href={`tel:+91${phone}`}>
-                <Phone />
-              </a>
-            </Button>
-          </>
-        )}
-      </div>
+              {i === 0 && whatsapp && (
+                <Button
+                  asChild
+                  size="icon-sm"
+                  variant="outline"
+                  aria-label={t('WhatsApp {{n}}', { n: name })}
+                >
+                  <a href={whatsappLink(p)} target="_blank" rel="noopener noreferrer">
+                    <MessageCircle />
+                  </a>
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

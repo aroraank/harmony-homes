@@ -132,8 +132,8 @@ export default function EventDetailPage() {
   const exportCsv = () =>
     downloadCsv(
       `event-${e.title.replace(/\W+/g, '-').toLowerCase()}.csv`,
-      ['Flat', 'Expected', 'Reason excluded', 'Due (Rs)', 'Paid (Rs)', 'Status', 'Paid extra (Rs)'],
-      r.units.map((u) => [u.unit_code, u.expected ? 'yes' : 'no', u.exclusion_reason, rupees(u.due_paise), rupees(u.paid_paise), u.status, rupees(u.extra_paise)]),
+      ['Flat', 'Expected', 'Reason excluded', 'Due (Rs)', 'Paid (Rs)', 'Status', 'Paid extra (Rs)', 'Receipt nos'],
+      r.units.map((u) => [u.unit_code, u.expected ? 'yes' : 'no', u.exclusion_reason, rupees(u.due_paise), rupees(u.paid_paise), u.status, rupees(u.extra_paise), r.entries.filter((x) => x.unit_code === u.unit_code && x.direction === 'credit' && !x.is_reversed && !x.is_reversal).map((x) => x.receipt_no).filter(Boolean).join('; ')]),
     );
 
   const exportPdf = async () => {
@@ -161,8 +161,8 @@ export default function EventDetailPage() {
         {
           title: 'Entries',
           table: {
-            head: ['Date', 'Item', 'Amount'],
-            body: r.entries.map((x) => [formatDate(x.date), `${x.unit_code ?? x.payee ?? ''} ${categoryLabel(x.category)}${x.is_reversed ? ' (reversed)' : ''}`, pdfINR(x.direction === 'credit' ? x.amount_paise : -x.amount_paise)]),
+            head: ['Date', 'Flat', 'Item', 'Receipt', 'Amount'],
+            body: r.entries.map((x) => [formatDate(x.date), x.unit_code ?? '', `${x.unit_code ? '' : (x.payee ?? '') + ' '}${categoryLabel(x.category)}${x.is_reversed ? ' (reversed)' : ''}`.trim(), x.receipt_no ?? '', pdfINR(x.direction === 'credit' ? x.amount_paise : -x.amount_paise)]),
           },
         },
       ]);
@@ -297,7 +297,7 @@ export default function EventDetailPage() {
                     {x.unit_code ?? x.payee ?? categoryLabel(x.category)} {x.is_reversal && <Badge variant="info">{t('Reversal')}</Badge>}
                   </p>
                   <p className="text-[12px] text-muted-foreground">
-                    {formatDate(x.date)} · {categoryLabel(x.category)}
+                    {formatDate(x.date)} · {categoryLabel(x.category)}{x.receipt_no ? ` · ${x.receipt_no}` : ''}
                   </p>
                 </div>
                 <Money paise={x.direction === 'credit' ? x.amount_paise : -x.amount_paise} sign tone="auto" className={cn('font-bold', x.is_reversed && 'struck')} />
@@ -336,6 +336,14 @@ export default function EventDetailPage() {
         loading={busy}
         onConfirm={run}
       >
+        <div className="mt-1 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-[12.5px] leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <p className="font-bold">{t('Please read before closing')}</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            <li>{t('Closing ends this collection. Flats can no longer pay into it and it moves out of the active list.')}</li>
+            <li>{t('A closed event cannot be reopened.')}</li>
+            <li>{t('If you move the balance to the General fund below, it leaves this event and no longer shows here.')}</li>
+          </ul>
+        </div>
         {r.balance_paise !== 0 && (
           <label className="mt-1 flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3">
             <span className="text-sm font-medium">
