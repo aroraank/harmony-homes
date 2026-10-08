@@ -203,11 +203,6 @@ export default function MonthReportPage() {
               <Share2 /> {t('Pending')}
             </Button>
           </div>
-          {m.can('close_month') && !r.is_closed && period < currentPeriod() && (
-            <Button variant="secondary" className="mt-2 w-full" onClick={() => setAction('close')}>
-              <Lock /> {t('Close {{m}}', { m: periodLabel(period) })}
-            </Button>
-          )}
           {m.can('reopen_month') && r.is_closed && (
             <Button variant="outline" className="mt-2 w-full" onClick={() => setAction('reopen')}>
               <LockOpen /> {t('Reopen {{m}}', { m: periodLabel(period) })}

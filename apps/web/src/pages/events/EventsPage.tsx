@@ -22,6 +22,7 @@ export default function EventsPage() {
   const dash = useDashboard(m.societyId);
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
+  const [kind, setKind] = useState<'all' | 'recurring' | 'one'>('all');
   const ov = useQuery({
     queryKey: ['eventsOverview', m.societyId, year, month],
     queryFn: () => rpc<Overview>('events_overview', { p_society: m.societyId, p_year: year ? Number(year) : null, p_month: month ? Number(month) : null, p_limit: 200 }),
@@ -71,6 +72,14 @@ export default function EventsPage() {
           ))}
         </NativeSelect>
       </div>
+      <div className="mb-3 flex gap-2">
+        {([['all', 'All events'], ['recurring', 'Recurring'], ['one', 'One-time']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setKind(k)}
+            className={`rounded-full border px-3.5 py-1.5 text-[13px] font-bold ${kind === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}>
+            {t(l)}
+          </button>
+        ))}
+      </div>
       <QueryState
         query={q}
         empty={(d) =>
@@ -84,7 +93,9 @@ export default function EventsPage() {
         }
       >
         {(all) => {
-          const events = filtered ? all.filter((e) => byId.has(e.id)) : all;
+          const base = filtered ? all.filter((e) => byId.has(e.id)) : all;
+          const isRec = (id: string) => !!(byId.get(id) as { series_id?: string | null } | undefined)?.series_id;
+          const events = kind === 'all' ? base : base.filter((e) => (kind === 'recurring') === isRec(e.id));
           if (events.length === 0) return <EmptyState icon={<CalendarHeart className="size-7" />} title={t('No events in this month')} />;
           const groups: [string, EventRow[]][] = [
             [t('Open'), events.filter((e) => e.status === 'open')],
@@ -105,6 +116,9 @@ export default function EventsPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="truncate font-bold">{e.title}</p>
+                            {(byId.get(e.id) as { series_id?: string | null } | undefined)?.series_id && (
+                              <span className="mb-0.5 inline-block rounded-full bg-lime-100 px-2 py-px text-[10.5px] font-bold uppercase text-lime-800 dark:bg-lime-500/15 dark:text-lime-300">{t('Recurring')}</span>
+                            )}
                             <p className="text-[12.5px] text-muted-foreground">
                               {formatINR(e.total_cost_paise)} · {t('{{n}} flats × {{a}}', { n: e.expected_count, a: formatINR(e.per_unit_share_paise) })}
                             </p>

@@ -91,13 +91,12 @@ export function referenceRequired(mode: PaymentMode | string): boolean {
   return !['cash', 'cheque', 'other'].includes(mode);
 }
 
-/** PIN rules: numbers only, 6 to 12 digits. (A PIN is the sign-in secret; the name "password" is kept internally.) */
-export const PIN_RE = /^\d{6,12}$/;
+/** PIN rules: numbers only, exactly 6 digits. (A PIN is the sign-in secret; the name "password" is kept internally.) */
+export const PIN_RE = /^\d{6}$/;
 export function pinProblems(pin: string, current?: string): string[] {
   const out: string[] = [];
   if (!/^\d*$/.test(pin)) out.push('Numbers only');
-  if (pin.length < 6) out.push('At least 6 digits');
-  if (pin.length > 12) out.push('At most 12 digits');
+  if (pin.length !== 6) out.push('Exactly 6 digits');
   if (current && pin === current) out.push('Must be different from the current / temporary PIN');
   return out;
 }
@@ -121,5 +120,5 @@ export const registrationSchema = z.object({
   mobile: mobileSchema,
   unitTypeId: z.string().uuid('Choose your flat type'),
   unitId: z.string().uuid('Choose your flat'),
-  password: z.string().regex(PIN_RE, 'PIN must be 6 to 12 digits'),
+  password: z.string().regex(PIN_RE, 'PIN must be exactly 6 digits'),
 });

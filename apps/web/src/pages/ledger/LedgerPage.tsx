@@ -192,7 +192,8 @@ function EntryRow({ r, onClick, first, cats }: { r: LedgerRow; onClick: () => vo
   const { t } = useTranslation();
   const isTransfer = r.category === 'transfer';
   const Icon = isTransfer ? ArrowLeftRight : r.reverses_entry_id ? Undo2 : r.direction === 'credit' ? ArrowDownLeft : ArrowUpRight;
-  const title = r.unit_code ? `${r.unit_code} · ${categoryLabel(r.category, cats)}` : r.payee ? `${r.payee}` : categoryLabel(r.category, cats);
+  const isEv = r.fund_kind === 'event' && r.category === 'event_contribution';
+  const title = isEv && r.unit_code ? `${r.fund_name} · ${r.unit_code}` : r.unit_code ? `${r.unit_code} · ${categoryLabel(r.category, cats)}` : r.payee ? `${r.payee}` : categoryLabel(r.category, cats);
   return (
     <button
       type="button"
@@ -211,10 +212,11 @@ function EntryRow({ r, onClick, first, cats }: { r: LedgerRow; onClick: () => vo
       <div className="min-w-0 flex-1">
         <p className={cn('truncate text-[14.5px] font-semibold', r.is_reversed && 'struck')}>{title}</p>
         <p className="truncate text-[12px] text-muted-foreground">
+          {isEv && <span className="mr-1 rounded-full bg-lime-100 px-1.5 py-px text-[10px] font-bold uppercase text-lime-800 dark:bg-lime-500/15 dark:text-lime-300">{t('Event')}</span>}
           {r.reverses_entry_id ? t('Reversal') + ' · ' : ''}
           {r.payee && r.unit_code ? r.payee + ' · ' : ''}
           {!r.unit_code && r.payee ? categoryLabel(r.category, cats) + ' · ' : ''}
-          {r.fund_kind === 'event' ? r.fund_name + ' · ' : ''}
+          {r.fund_kind === 'event' && !isEv ? r.fund_name + ' · ' : ''}
           {MODE_LABELS[r.payment_mode ?? ''] ?? ''}
           {r.reference_no ? ` · ${r.reference_no}` : ''}
         </p>

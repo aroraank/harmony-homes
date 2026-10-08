@@ -52,7 +52,7 @@ export default function ReportsPage() {
       <PageHeader title={t('Reports')} subtitle={t('Open to every member — transparency builds trust')} back="/more" />
 
       <div className="grid grid-cols-2 gap-2.5">
-        <Link to="/reports/defaulters">
+        <Link to="/reports/pending">
           <StatTile label={t('Owed by members (now)')} value={formatINR(outstandingFromMembers)} tone={outstandingFromMembers > 0 ? 'bad' : 'default'} />
         </Link>
         <StatTile label={t('Cash shortfall (12mo)')} value={formatINR(cashShortfall12mo)} tone={cashShortfall12mo > 0 ? 'warn' : 'default'} />
@@ -63,7 +63,7 @@ export default function ReportsPage() {
 
       <div className="space-y-2.5">
         <ListRow to={`/reports/month/${currentPeriod()}`} icon={<CalendarRange />} title={t('Month view')} subtitle={t('Opening, collected, spent, shortfall and closing')} />
-        <ListRow to="/reports/defaulters" icon={<AlertTriangle />} title={t('Pending list')} subtitle={m.isAdmin ? t('Flats with overdue dues, share on WhatsApp') : t('Your own overdue dues')} />
+        <ListRow to="/reports/pending" icon={<AlertTriangle />} title={t('Pending list')} subtitle={m.isAdmin ? t('Flats with overdue dues, share on WhatsApp') : t('Your own overdue dues')} />
         <ListRow to={m.unit_id ? `/reports/unit/${m.unit_id}` : '/reports/unit'} icon={<Home />} title={t('Flat statement')} subtitle={t('Every due and payment of a flat')} />
         <ListRow to="/reports/payees" icon={<UserRound />} title={t('Payee history')} subtitle={t('e.g. all payments to the security guard')} />
         <ListRow to="/ledger" icon={<FileSpreadsheet />} title={t('Full ledger')} subtitle={t('Search and export every entry')} />

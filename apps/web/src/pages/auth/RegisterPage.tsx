@@ -29,7 +29,7 @@ const schema = z
     mobile: mobileSchema,
     unitTypeId: z.string().min(1, 'Choose your flat type'),
     unitId: z.string().min(1, 'Choose your flat'),
-    password: z.string().regex(/^\d{6,12}$/, 'PIN must be 6 to 12 digits, numbers only'),
+    password: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits, numbers only'),
     confirm: z.string(),
   })
   .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'PINs do not match' });
@@ -123,7 +123,7 @@ export default function RegisterPage() {
               ))}
             </NativeSelect>
           </Field>
-          <Field label={t('PIN')} error={e.password?.message && t(e.password.message)} hint={t('6 to 12 digits, numbers only.')}>
+          <Field label={t('PIN')} error={e.password?.message && t(e.password.message)} hint={t('Exactly 6 digits, numbers only.')}>
             <PinInput defaultShown value={form.watch('password') ?? ''} onChange={(v) => form.setValue('password', v, { shouldValidate: form.formState.isSubmitted })} />
           </Field>
           <Field label={t('Confirm PIN')} error={e.confirm?.message && t(e.confirm.message)}>

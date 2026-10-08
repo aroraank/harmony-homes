@@ -117,7 +117,8 @@ export default function App() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/month/:period?" element={<MonthReportPage />} />
         <Route path="reports/unit/:unitId?" element={<UnitStatementPage />} />
-        <Route path="reports/defaulters" element={<DefaultersPage />} />
+        <Route path="reports/pending" element={<DefaultersPage />} />
+        <Route path="reports/defaulters" element={<Navigate to="/reports/pending" replace />} />
         <Route path="reports/payees" element={<PayeeHistoryPage />} />
         <Route path="concerns" element={<ConcernsPage />} />
         <Route path="concerns/new" element={<ConcernNewPage />} />

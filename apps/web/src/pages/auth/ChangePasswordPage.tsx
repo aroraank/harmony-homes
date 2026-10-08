@@ -30,7 +30,7 @@ export default function ChangePasswordPage() {
   const problems = pinProblems(next, current);
   const rules = [
     { ok: /^\d+$/.test(next), label: t('Numbers only') },
-    { ok: next.length >= 6, label: t('At least 6 digits') },
+    { ok: next.length === 6, label: t('Exactly 6 digits') },
     { ok: !!next && next !== current, label: forced ? t('Different from the temporary PIN') : t('Different from the current PIN') },
     { ok: !!next && next === confirm, label: t('Both entries match') },
   ];

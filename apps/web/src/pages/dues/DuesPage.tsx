@@ -30,7 +30,7 @@ export default function DuesPage() {
           hint={t('Use Reports to see any flat’s statement or the pending list.')}
           action={
             <Button asChild>
-              <Link to="/reports/defaulters">{t('Open pending list')}</Link>
+              <Link to="/reports/pending">{t('Open pending list')}</Link>
             </Button>
           }
         />

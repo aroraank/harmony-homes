@@ -19,7 +19,7 @@ export function generateTempPassword(length = 12): string {
 
 /** Random numeric temporary PIN (default 6 digits), uniformly distributed. Works in browsers, Node 20+ and Deno. */
 export function generateTempPin(length = 6): string {
-  if (length < 6 || length > 12) throw new Error('A PIN has 6 to 12 digits');
+  if (length !== 6) throw new Error('A PIN has 6 to 12 digits');
   const out: string[] = [];
   while (out.length < length) {
     const buf = new Uint8Array(length * 2);

@@ -81,8 +81,8 @@ begin
   select share_rounding_paise into v_rounding from society_settings where society_id = v_society;
 
   insert into event_series (society_id, title, description, scope_type, total_cost_paise, due_day, due_month_offset)
-  values (v_society, c_title, 'Monthly security guard salary shared by all flats. Due by the 7th of the following month.',
-          'all', c_share * 30, 7, 1)
+  values (v_society, c_title, 'Monthly security guard salary shared by all flats. Due on the 1st of the following month.',
+          'all', c_share * 30, 1, 1)
   returning id into v_series;
   insert into event_series_versions (society_id, series_id, total_cost_paise, effective_period, reason)
   values (v_society, v_series, c_share * 30, c_start, 'Started');
@@ -102,7 +102,7 @@ begin
     select count(*) into v_exp from _sg_owe;
     continue when v_exp = 0;
     v_total := case when v_period = c_last then c_share * 30 else c_share * v_exp end;
-    v_due := (make_date(substr(v_period, 1, 4)::int, substr(v_period, 6, 2)::int, 7) + interval '1 month')::date;
+    v_due := (make_date(substr(v_period, 1, 4)::int, substr(v_period, 6, 2)::int, 1) + interval '1 month')::date;
 
     insert into events (society_id, title, description, scope_type, total_cost_paise, rounding_paise, in_scope_count, expected_count,
                         per_unit_share_paise, due_date, series_id, series_period)

@@ -134,12 +134,11 @@ export function generateTempPin(length = 6): string {
   return out.join('');
 }
 
-/** PIN rules (mirrors packages/shared): numbers only, 6 to 12 digits */
+/** PIN rules (mirrors packages/shared): numbers only, exactly 6 digits */
 export function passwordProblems(pw: string, _username?: string, current?: string): string[] {
   const out: string[] = [];
   if (typeof pw !== 'string' || !/^\d*$/.test(pw)) out.push('numbers only');
-  if (typeof pw !== 'string' || pw.length < 6) out.push('at least 6 digits');
-  if (typeof pw === 'string' && pw.length > 12) out.push('at most 12 digits');
+  if (typeof pw !== 'string' || pw.length !== 6) out.push('exactly 6 digits');
   if (pw && current && pw === current) out.push('different from the current / temporary PIN');
   return out;
 }

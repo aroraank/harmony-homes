@@ -151,9 +151,9 @@ describe('validation', () => {
   });
 
   it('PIN rules', () => {
-    expect(passwordProblems('12345', 'P1-GF')).toContain('At least 6 digits');
+    expect(passwordProblems('12345', 'P1-GF')).toContain('Exactly 6 digits');
     expect(passwordProblems('12a456', 'P1-GF')).toContain('Numbers only');
-    expect(passwordProblems('1234567890123', 'P1-GF')).toContain('At most 12 digits');
+    expect(passwordProblems('1234567890123', 'P1-GF')).toContain('Exactly 6 digits');
     expect(passwordProblems('482913', 'P1-GF', '482913')).toContain('Must be different from the current / temporary PIN');
     expect(passwordProblems('482913', 'P1-GF', '115577')).toEqual([]);
     expect(passwordProblems('000000')).toEqual([]);

@@ -51,7 +51,7 @@ begin
                              in_scope_count, expected_count, per_unit_share_paise, due_date, status)
   values (v_society, 'Motor repair — 3BHK', 'Water motor repair shared by the 3BHK plots.', 'unit_types', array[v_3bhk],
           24000000, 1000, array_length(v_scope, 1), array_length(v_scope, 1),
-          public.event_share_paise(24000000, array_length(v_scope, 1), 1000), public.ist_today() + 30, 'draft')
+          public.event_share_paise(24000000, array_length(v_scope, 1), 1000), date '2026-10-11', 'draft')
   returning id into v_event;
   insert into public.event_units (event_id, unit_id, society_id, expected)
   select v_event, u, v_society, true from unnest(v_scope) u;

@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Download, PartyPopper, Share2 } from 'lucide-react';
+import { ChevronDown, Download, PartyPopper, Share2 } from 'lucide-react';
 import { formatDate, formatINR, istToday } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { rpc } from '@/lib/supabase';
@@ -18,6 +19,7 @@ export default function DefaultersPage() {
   const { t } = useTranslation();
   const m = useMember();
   const q = useQuery({ queryKey: ['defaulters', m.societyId], queryFn: () => rpc<Defaulter[]>('defaulters', { p_society: m.societyId }) });
+  const [open, setOpen] = useState<string | null>(null);
   const total = (q.data ?? []).reduce((s, d) => s + d.pending_paise, 0);
 
   const share = () =>
@@ -55,22 +57,35 @@ export default function DefaultersPage() {
             </Card>
             <div className="space-y-2">
               {list.map((d) => (
-                <Link key={d.unit_id} to={`/reports/unit/${d.unit_id}`} className="flex items-center gap-3 rounded-2xl border bg-card p-3.5 shadow-card hover:bg-secondary/50">
-                  <span className="tabular grid h-11 min-w-[64px] place-items-center rounded-xl bg-rose-50 px-2 text-sm font-extrabold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
-                    {d.unit_code}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold">{(d.periods ?? []).join(', ')}</p>
-                    <p className="text-[12px] text-muted-foreground">
-                      {d.months_overdue > 0 && t('{{n}} month(s) overdue', { n: d.months_overdue })}
-                      {d.months_overdue > 0 && d.events_overdue > 0 && ' · '}
-                      {d.events_overdue > 0 && t('{{n}} event(s)', { n: d.events_overdue })}
-                      {' · '}
-                      {t('since {{d}}', { d: formatDate(d.oldest_due_date) })}
-                    </p>
-                  </div>
-                  <Money paise={d.pending_paise} className="font-extrabold text-debit" />
-                </Link>
+                <div key={d.unit_id} className="rounded-2xl border bg-card shadow-card">
+                  <button type="button" aria-expanded={open === d.unit_id} onClick={() => setOpen(open === d.unit_id ? null : d.unit_id)} className="flex w-full items-center gap-3 p-3.5 text-left">
+                    <span className="tabular grid h-11 min-w-[64px] place-items-center rounded-xl bg-rose-50 px-2 text-sm font-extrabold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+                      {d.unit_code}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold">{(d.periods ?? []).join(', ')}</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        {d.months_overdue > 0 && t('{{n}} month(s) overdue', { n: d.months_overdue })}
+                        {d.months_overdue > 0 && d.events_overdue > 0 && ' · '}
+                        {d.events_overdue > 0 && t('{{n}} event(s)', { n: d.events_overdue })}
+                        {' · '}
+                        {t('since {{d}}', { d: formatDate(d.oldest_due_date) })}
+                      </p>
+                    </div>
+                    <Money paise={d.pending_paise} className="font-extrabold text-debit" />
+                    <ChevronDown className={`size-4 text-muted-foreground transition-transform ${open === d.unit_id ? 'rotate-180' : ''}`} />
+                  </button>
+                  {open === d.unit_id && (
+                    <div className="border-t px-3.5 py-3">
+                      <ul className="space-y-1.5 text-[13px]">
+                        {(d.periods ?? []).map((p) => (
+                          <li key={p} className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-rose-500" />{p}</li>
+                        ))}
+                      </ul>
+                      <Link to={`/reports/unit/${d.unit_id}`} className="mt-3 inline-block text-[13px] font-bold text-primary">{t('Full statement')} →</Link>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </>

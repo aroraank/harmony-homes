@@ -99,7 +99,7 @@ export default function HomePage() {
         <SectionTitle>{t('Reports')}</SectionTitle>
         <div className="grid grid-cols-2 gap-2.5">
           <QuickLink to={`/reports/month/${d.period}`} icon={<FileText />} label={t('This month')} />
-          <QuickLink to="/reports/defaulters" icon={<AlertTriangle />} label={t('Pending list')} />
+          <QuickLink to="/reports/pending" icon={<AlertTriangle />} label={t('Pending list')} />
           <QuickLink to="/ledger" icon={<Receipt />} label={t('Full ledger')} />
           <QuickLink to="/reports" icon={<Sparkles />} label={t('Charts & more')} />
         </div>

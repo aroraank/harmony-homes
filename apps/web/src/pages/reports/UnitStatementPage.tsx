@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Download, FileDown, FileText, IndianRupee, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatDate, formatINR } from '@harmony/shared';
+import { formatDate, formatINR, istToday } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { useUnits } from '@/lib/queries';
@@ -149,7 +149,11 @@ export default function UnitStatementPage() {
                     <div className="text-right">
                       <Money paise={d.amount_paise} className="text-sm font-bold" />
                       <div className="mt-0.5">
-                        <StatusChip status={st} />
+                        {st === 'pending' && d.due_date > istToday() ? (
+                          <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[11px] font-bold text-muted-foreground">{t('Not due yet')}</span>
+                        ) : (
+                          <StatusChip status={st} />
+                        )}
                       </div>
                     </div>
                   </div>

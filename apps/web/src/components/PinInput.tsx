@@ -3,9 +3,9 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 
-/** Digits-only sanitiser for PINs (6 to 12 digits). */
+/** Digits-only sanitiser for PINs (exactly 6 digits). */
 export function sanitizePin(raw: string): string {
-  return raw.replace(/\D/g, '').slice(0, 12);
+  return raw.replace(/\D/g, '').slice(0, 6);
 }
 
 /**
@@ -35,7 +35,7 @@ export function PinInput({
         type={show ? 'text' : 'password'}
         inputMode="numeric"
         pattern={anyCharacters ? undefined : '[0-9]*'}
-        maxLength={anyCharacters ? 72 : 12}
+        maxLength={anyCharacters ? 72 : 6}
         autoComplete={autoComplete}
         autoCorrect="off"
         spellCheck={false}
