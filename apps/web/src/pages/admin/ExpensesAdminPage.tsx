@@ -182,12 +182,17 @@ export default function ExpensesAdminPage() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('Amount')}>
-                <AmountInput value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+                <AmountInput value={form.amount} disabled={!!form.id} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
               </Field>
               <Field label={t('Day of month')}>
                 <IntInput max={28} value={form.day} onChange={(e) => setForm((f) => ({ ...f, day: e.target.value }))} />
               </Field>
             </div>
+            {form.id && (
+              <p className="text-[12.5px] text-muted-foreground">
+                {t('To change the amount, use')} <Link to="/events/recurring" className="font-semibold text-primary underline">{t('Change amount')}</Link> {t('so the history is kept and everyone is told.')}
+              </p>
+            )}
             <Field label={t('Category')}>
               <NativeSelect value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
                 {cats.data?.map((c) => (

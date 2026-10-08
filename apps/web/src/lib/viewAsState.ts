@@ -40,6 +40,8 @@ export const READ_ONLY_RPCS = new Set([
   'defaulters',
   'event_report',
   'society_position',
+  'recurring_overview',
+  'events_overview',
   'ledger_statement',
   'unit_ledger_statement',
   'surplus_board',

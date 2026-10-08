@@ -616,6 +616,97 @@ do $$ begin
   end if;
 end $$;
 
+
+\echo '25. Recurring events, amount history, events overview'
+:as_ad
+do $$ declare sid uuid; ev record; v_cur text := public.period_of(public.ist_today()); tid uuid; r jsonb; n0 int; begin
+  sid := public.create_event_series(public._tv('soc_a'), 'Security guard salary', null, 4500000, 'all', '{}', 10, true);
+  select * into ev from public.events where series_id = sid;
+  if ev.id is null or ev.series_period <> v_cur or ev.status <> 'open' or ev.total_cost_paise <> 4500000
+     or ev.title not like 'Security guard salary – %' then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: series did not publish this month''s event';
+  end if;
+  begin
+    perform public.publish_series_month(sid);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: duplicate month published';
+  exception when sqlstate 'P0001' then null; end;
+  -- next month: this month's event untouched
+  perform public.change_series_amount(sid, 5000000, 'next', 'Salary revised');
+  if (select total_cost_paise from public.events where id = ev.id) <> 4500000 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: next-month change touched this month';
+  end if;
+  if (select pending_total_paise from public.event_series where id = sid) <> 5000000 or (select total_cost_paise from public.event_series where id = sid) <> 4500000
+     or (select pending_from_period from public.event_series where id = sid) <= v_cur then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: scheduled amount wrong';
+  end if;
+  begin
+    perform public.change_series_amount(sid, 5000000, 'next', 'again');
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: unchanged amount accepted';
+  exception when sqlstate 'P0001' then null; end;
+  -- forced from this month (nobody has paid yet)
+  perform public.change_series_amount(sid, 4800000, 'now', 'Guard hired');
+  select * into ev from public.events where id = ev.id;
+  if ev.total_cost_paise <> 4800000 or ev.per_unit_share_paise <= 0 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: forced change did not update this month';
+  end if;
+  if (select count(*) from public.event_series_versions where series_id = sid) <> 3 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: history rows';
+  end if;
+  begin
+    perform public.change_series_amount(sid, 1, 'now', 'x');
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: too short reason / tiny amount accepted';
+  exception when sqlstate 'P0001' then null; end;
+  -- fixed monthly expense: scheduled change keeps this month
+  tid := public.upsert_expense_template(public._tv('soc_a'), null, 'Sweeper salary', public._tv('gen_a'), 'salary', null, 1200000, 1, 'cash', true);
+  perform public.change_template_amount(tid, 1500000, 'next', 'Raise');
+  if (select amount_paise from public.expense_templates where id = tid) <> 1200000 or (select pending_amount_paise from public.expense_templates where id = tid) <> 1500000
+     or (select pending_from_period from public.expense_templates where id = tid) <= v_cur then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: template schedule';
+  end if;
+  begin
+    perform public.upsert_expense_template(public._tv('soc_a'), tid, 'Sweeper salary', public._tv('gen_a'), 'salary', null, 999900, 1, 'cash', true);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: amount edited in place';
+  exception when sqlstate 'P0001' then null; end;
+  perform public.change_template_amount(tid, 1300000, 'now', 'Correction');
+  if (select amount_paise from public.expense_templates where id = tid) <> 1300000 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: template forced change';
+  end if;
+  r := public.events_overview(public._tv('soc_a'), null, null, 3);
+  if jsonb_array_length(r -> 'events') < 1 or (r -> 'events' -> 0 ->> 'diff_paise')::bigint >= 0 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: overview should show a shortfall';
+  end if;
+  if jsonb_array_length(public.events_overview(public._tv('soc_a'), 1999, 1, null) -> 'events') <> 0 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: month filter';
+  end if;
+  perform set_config('hh.series', sid::text, false);
+end $$;
+:as_owner
+do $$ declare n int; begin
+  select count(distinct user_id) into n from public.notifications where kind = 'series_change' and user_id in (public._tv('sa'), public._tv('ad'), public._tv('r1'), public._tv('r2'));
+  if n <> 4 then raise exception using errcode = 'TF001', message = 'TEST FAIL: series changes must notify everyone, got ' || n; end if;
+  if (select count(distinct user_id) from public.notifications where kind = 'fixed_expense_change') < 4 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: expense changes must notify everyone';
+  end if;
+end $$;
+:as_r2
+do $$ declare r jsonb; begin
+  begin
+    perform public.create_event_series(public._tv('soc_a'), 'Not allowed', null, 100000, 'all', '{}', 5, false);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: resident created a series';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.change_series_amount((select id from public.event_series limit 1), 100000, 'now', 'nope nope');
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: resident changed a series';
+  exception when insufficient_privilege then null; end;
+  r := public.recurring_overview(public._tv('soc_a'));
+  if jsonb_array_length(r -> 'series') < 1 or jsonb_array_length(r -> 'expenses') < 1 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: members cannot view recurring items';
+  end if;
+  if jsonb_array_length(public.events_overview(public._tv('soc_a'), null, null, 3) -> 'events') < 1 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: member cannot see events overview';
+  end if;
+end $$;
+
 :as_owner
 do $$ declare v jsonb; begin
   v := public.run_daily_jobs();

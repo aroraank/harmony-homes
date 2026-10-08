@@ -9,6 +9,7 @@ import { Button } from './components/ui/button';
 import LoginPage from './pages/auth/LoginPage';
 import HomePage from './pages/HomePage';
 
+const RecurringPage = lazy(() => import('./pages/events/RecurringPage'));
 const RegisterPage = lazy(() => import('./pages/auth/RegisterPage'));
 const ChangePasswordPage = lazy(() => import('./pages/auth/ChangePasswordPage'));
 const NoAccessPage = lazy(() => import('./pages/auth/NoAccessPage'));
@@ -104,6 +105,7 @@ export default function App() {
         <Route path="ledger" element={<LedgerPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="events/new" element={<EventCreatePage />} />
+        <Route path="events/recurring" element={<Lazy><RecurringPage /></Lazy>} />
         <Route path="events/:id" element={<EventDetailPage />} />
         <Route path="meetings" element={<MeetingsPage />} />
         <Route path="meetings/new" element={<MeetingComposePage />} />

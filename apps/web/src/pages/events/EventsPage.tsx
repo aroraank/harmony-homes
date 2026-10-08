@@ -1,9 +1,14 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { CalendarHeart, ChevronRight, Plus } from 'lucide-react';
-import { formatDate, formatINR } from '@harmony/shared';
+import { CalendarHeart, ChevronRight, Plus, Repeat } from 'lucide-react';
+import { formatDate, formatINR, periodLabel } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { useDashboard, useEvents } from '@/lib/queries';
+import { rpc } from '@/lib/supabase';
+import { EventDiff, type Overview } from '@/components/EventDiff';
+import { NativeSelect } from '@/components/ui/input';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { EmptyState, QueryState } from '@/components/States';
 import { Button } from '@/components/ui/button';
@@ -15,6 +20,15 @@ export default function EventsPage() {
   const m = useMember();
   const q = useEvents(m.societyId);
   const dash = useDashboard(m.societyId);
+  const [year, setYear] = useState('');
+  const [month, setMonth] = useState('');
+  const ov = useQuery({
+    queryKey: ['eventsOverview', m.societyId, year, month],
+    queryFn: () => rpc<Overview>('events_overview', { p_society: m.societyId, p_year: year ? Number(year) : null, p_month: month ? Number(month) : null, p_limit: 200 }),
+  });
+  const years = [...new Set((ov.data?.periods ?? []).map((p) => p.slice(0, 4)))];
+  const byId = new Map((ov.data?.events ?? []).map((e) => [e.id, e]));
+  const filtered = !!(year || month);
   const collected = (id: string) => dash.data?.events.find((e) => e.id === id)?.collected_paise;
 
   return (
@@ -23,15 +37,40 @@ export default function EventsPage() {
         title={t('Events')}
         subtitle={t('Special collections like repairs, shared by the flats involved')}
         actions={
-          m.can('manage_events') && (
-            <Button asChild size="sm">
-              <Link to="/events/new">
-                <Plus /> {t('New')}
+          <div className="flex gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link to="/events/recurring">
+                <Repeat /> {t('Recurring')}
               </Link>
             </Button>
-          )
+            {m.can('manage_events') && (
+              <Button asChild size="sm">
+                <Link to="/events/new">
+                  <Plus /> {t('New')}
+                </Link>
+              </Button>
+            )}
+          </div>
         }
       />
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <NativeSelect aria-label={t('Year')} value={year} onChange={(e) => setYear(e.target.value)}>
+          <option value="">{t('All years')}</option>
+          {years.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </NativeSelect>
+        <NativeSelect aria-label={t('Month')} value={month} onChange={(e) => setMonth(e.target.value)}>
+          <option value="">{t('All months')}</option>
+          {Array.from({ length: 12 }, (_, i) => (
+            <option key={i} value={i + 1}>
+              {periodLabel(`2026-${String(i + 1).padStart(2, '0')}`, true).split(' ')[0]}
+            </option>
+          ))}
+        </NativeSelect>
+      </div>
       <QueryState
         query={q}
         empty={(d) =>
@@ -44,7 +83,9 @@ export default function EventsPage() {
           )
         }
       >
-        {(events) => {
+        {(all) => {
+          const events = filtered ? all.filter((e) => byId.has(e.id)) : all;
+          if (events.length === 0) return <EmptyState icon={<CalendarHeart className="size-7" />} title={t('No events in this month')} />;
           const groups: [string, EventRow[]][] = [
             [t('Open'), events.filter((e) => e.status === 'open')],
             [t('Drafts'), events.filter((e) => e.status === 'draft')],
@@ -74,6 +115,11 @@ export default function EventsPage() {
                             <ChevronRight className="size-4 text-muted-foreground" />
                           </div>
                         </div>
+                        {byId.get(e.id) && e.status !== 'draft' && (
+                          <p className="mt-2">
+                            <EventDiff diff={byId.get(e.id)!.diff_paise} />
+                          </p>
+                        )}
                         {pct !== null && (
                           <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
                             <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400" style={{ width: `${pct}%` }} />

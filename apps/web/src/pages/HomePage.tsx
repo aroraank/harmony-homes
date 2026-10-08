@@ -1,3 +1,4 @@
+import { RecentEvents } from '@/components/RecentEvents';
 import { SocietyPosition } from '@/components/SocietyPosition';
 import { SurplusBoard } from '@/components/SurplusBoard';
 import { useState } from 'react';
@@ -71,6 +72,8 @@ export default function HomePage() {
       <NextMeetingCard />
       <EnableExtras />
 
+      <RecentEvents />
+
       {d.events.length > 0 && (
         <section>
           <SectionTitle action={<Link to="/events" className="text-[13px] font-semibold text-primary">{t('All events')}</Link>}>
@@ -103,7 +106,7 @@ export default function HomePage() {
 
       {d.fixed_expenses.length > 0 && (
         <section>
-          <SectionTitle>{t('Fixed monthly expenses')}</SectionTitle>
+          <SectionTitle action={<Link to="/events/recurring" className="text-[13px] font-semibold text-primary">{d.admin ? t('Manage') : t('History')}</Link>}>{t('Fixed monthly expenses')}</SectionTitle>
           <Card className="divide-y">
             {d.fixed_expenses.map((f) => (
               <div key={f.title} className="flex items-center gap-3 px-4 py-3">
