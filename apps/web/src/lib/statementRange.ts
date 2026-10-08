@@ -1,10 +1,13 @@
 import { addDays, istToday } from '@harmony/shared';
 import { addMonths, currentPeriod, periodEnd, periodStart } from '@/lib/format';
 
-export type RangeKey = 'last_month' | '3' | '6' | '9' | '12' | 'fy' | 'all' | 'custom';
+export type RangeKey =
+  'this_month' | 'month' | 'last_month' | '3' | '6' | '9' | '12' | 'fy' | 'all' | 'custom';
 
 export const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
+  { key: 'this_month', label: 'This month' },
   { key: 'last_month', label: 'Last month' },
+  { key: 'month', label: 'A particular month…' },
   { key: '3', label: 'Last 3 months' },
   { key: '6', label: 'Last 6 months' },
   { key: '9', label: 'Last 9 months' },
@@ -25,9 +28,19 @@ function monthsBack(iso: string, n: number): string {
 }
 
 /** `from` is null for "from the start" (the server uses the first entry). */
-export function resolveRange(key: RangeKey, custom: { from: string; to: string }): { from: string | null; to: string } {
+export function resolveRange(
+  key: RangeKey,
+  custom: { from: string; to: string; month?: string },
+): { from: string | null; to: string } {
   const today = istToday();
   switch (key) {
+    case 'this_month':
+      return { from: periodStart(currentPeriod()), to: today };
+    case 'month': {
+      const p = custom.month || currentPeriod();
+      const end = periodEnd(p);
+      return { from: periodStart(p), to: end > today ? today : end };
+    }
     case 'last_month': {
       const p = addMonths(currentPeriod(), -1);
       return { from: periodStart(p), to: periodEnd(p) };
@@ -50,7 +63,7 @@ export function resolveRange(key: RangeKey, custom: { from: string; to: string }
 
 export function validateRange(r: { from: string | null; to: string }): string | null {
   const today = istToday();
-  if (!r.to || (r.from === '' )) return 'Choose both dates.';
+  if (!r.to || r.from === '') return 'Choose both dates.';
   if (r.to > today) return 'The end date cannot be in the future.';
   if (r.from && r.from > r.to) return 'The start date must be on or before the end date.';
   return null;

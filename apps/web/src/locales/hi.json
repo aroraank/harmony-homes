@@ -888,7 +888,7 @@
   "This flat already has an active login. Approving will replace it.": "इस फ़्लैट का लॉगिन पहले से सक्रिय है। मंज़ूर करने से वह बदल जाएगा।",
   "This login is not linked to a flat": "यह लॉगिन किसी फ़्लैट से जुड़ा नहीं है",
   "This message was hidden by an admin.": "यह संदेश एडमिन ने छिपाया है।",
-  "This month": "यह महीना",
+  "This month": "इस महीने",
   "This payment": "यह भुगतान",
   "This receipt was cancelled": "यह रसीद रद्द की गई थी",
   "This reference already exists in the ledger. Record anyway only if it is a different payment.": "यह रेफ़रेंस पहले से लेजर में है। केवल अलग भुगतान होने पर ही दर्ज करें।",
@@ -1277,5 +1277,8 @@
   "e.g. Did our tank cleaning, on time and tidy": "जैसे: हमारी टंकी साफ़ की, समय पर और सफ़ाई से",
   "{{n}} trusted contacts": "{{n}} भरोसेमंद संपर्क",
   "{{n}} will no longer show in the directory.": "{{n}} अब सूची में नहीं दिखेगा।",
-  "Type a receipt number, e.g. HH/2026-27/0010.": "रसीद नंबर लिखें, जैसे HH/2026-27/0010।"
+  "Type a receipt number, e.g. HH/2026-27/0010.": "रसीद नंबर लिखें, जैसे HH/2026-27/0010।",
+  "A particular month…": "कोई एक महीना…",
+  "Nothing matches these filters. Payments are listed by the date they were received. Try All months.": "इन फ़िल्टर से कुछ नहीं मिला। भुगतान प्राप्ति की तारीख़ के अनुसार दिखते हैं। 'सभी महीने' आज़माएँ।",
+  "Payments and expenses will show up here. Money not yet paid is on the Dues page.": "भुगतान और ख़र्च यहाँ दिखेंगे। जो पैसा अभी बाक़ी है वह बकाया (Dues) पेज पर है।"
 }

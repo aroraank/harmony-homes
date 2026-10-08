@@ -2,10 +2,31 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, FileDown, Filter, ReceiptText, RotateCcw, Search, ShieldCheck, Undo2 } from 'lucide-react';
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Download,
+  FileDown,
+  Filter,
+  ReceiptText,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  Undo2,
+} from 'lucide-react';
 import { ReceiptLookup } from '@/components/ReceiptLookup';
 import { toast } from 'sonner';
-import { addMonths, currentPeriod, formatDate, formatDateTime, formatINR, periodEnd, periodLabel, periodStart } from '@/lib/format';
+import {
+  addMonths,
+  currentPeriod,
+  formatDate,
+  formatDateTime,
+  formatINR,
+  periodEnd,
+  periodLabel,
+  periodStart,
+} from '@/lib/format';
 import { useMember } from '@/lib/auth';
 import { errorMessage, newIdemKey, rpc, supabase } from '@/lib/supabase';
 import { invalidateMoney, unwrap, useExpenseCategories, useFunds, useUnits } from '@/lib/queries';
@@ -57,14 +78,18 @@ export default function LedgerPage() {
     if (dir) q = q.eq('direction', dir);
     if (period) q = q.gte('entry_date', periodStart(period)).lte('entry_date', periodEnd(period));
     const s = search.trim().replace(/[%,()]/g, '');
-    if (s) q = q.or(`unit_code.ilike.%${s}%,payee.ilike.%${s}%,reference_no.ilike.%${s}%,receipt_no.ilike.%${s}%,note.ilike.%${s}%`);
+    if (s)
+      q = q.or(
+        `unit_code.ilike.%${s}%,payee.ilike.%${s}%,reference_no.ilike.%${s}%,receipt_no.ilike.%${s}%,note.ilike.%${s}%`,
+      );
     return q.order('entry_date', { ascending: false }).order('created_at', { ascending: false });
   };
 
   const q = useInfiniteQuery({
     queryKey: ['ledger', m.societyId, scope, flat, fund, dir, period, search],
     initialPageParam: 0,
-    queryFn: async ({ pageParam }) => unwrap<LedgerRow[]>(await buildQuery().range(pageParam, pageParam + PAGE - 1)),
+    queryFn: async ({ pageParam }) =>
+      unwrap<LedgerRow[]>(await buildQuery().range(pageParam, pageParam + PAGE - 1)),
     getNextPageParam: (last, all) => (last.length === PAGE ? all.length * PAGE : undefined),
   });
 
@@ -80,7 +105,22 @@ export default function LedgerPage() {
       const all = unwrap<LedgerRow[]>(await buildQuery().range(0, 4999));
       downloadCsv(
         `ledger-${period || 'all'}.csv`,
-        ['Date', 'Direction', 'Amount (Rs)', 'Fund', 'Category', 'Flat', 'Payee', 'Mode', 'UTR/Reference', 'Receipt', 'Note', 'Status', 'Recorded by', 'Recorded at'],
+        [
+          'Date',
+          'Direction',
+          'Amount (Rs)',
+          'Fund',
+          'Category',
+          'Flat',
+          'Payee',
+          'Mode',
+          'UTR/Reference',
+          'Receipt',
+          'Note',
+          'Status',
+          'Recorded by',
+          'Recorded at',
+        ],
         all.map((r) => [
           r.entry_date,
           r.direction,
@@ -114,14 +154,30 @@ export default function LedgerPage() {
         subtitle={t('Every rupee in and out — entries are never edited or deleted')}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" size="icon" onClick={() => setLookupOpen(true)} aria-label={t('Verify a receipt')}>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setLookupOpen(true)}
+              aria-label={t('Verify a receipt')}
+            >
               <ShieldCheck />
             </Button>
-            <Button variant="outline" size="icon" onClick={() => setStmtOpen(true)} aria-label={t('Download PDF statement')}>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setStmtOpen(true)}
+              aria-label={t('Download PDF statement')}
+            >
               <FileDown />
             </Button>
             {m.isAdmin && (
-              <Button variant="outline" size="icon" onClick={exportCsv} loading={exporting} aria-label={t('Export CSV')}>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={exportCsv}
+                loading={exporting}
+                aria-label={t('Export CSV')}
+              >
                 {!exporting && <Download />}
               </Button>
             )}
@@ -130,9 +186,20 @@ export default function LedgerPage() {
       />
       {hasFlat && (
         <div className="mb-3 grid grid-cols-2 gap-1 rounded-2xl bg-muted p-1" role="tablist">
-          {([['me', t('My ledger')], ['society', t('Society ledger')]] as const).map(([k, label]) => (
-            <button key={k} type="button" role="tab" aria-selected={scope === k} onClick={() => setScope(k)}
-              className={`cursor-pointer rounded-xl py-2.5 text-[13.5px] font-bold transition-colors ${scope === k ? 'bg-card text-foreground shadow-card' : 'text-muted-foreground'}`}>
+          {(
+            [
+              ['me', t('My ledger')],
+              ['society', t('Society ledger')],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={scope === k}
+              onClick={() => setScope(k)}
+              className={`cursor-pointer rounded-xl py-2.5 text-[13.5px] font-bold transition-colors ${scope === k ? 'bg-card text-foreground shadow-card' : 'text-muted-foreground'}`}
+            >
               {label}
             </button>
           ))}
@@ -141,16 +208,33 @@ export default function LedgerPage() {
       <div className="mb-3 flex gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Flat, payee, UTR, receipt…')} className="pl-10" aria-label={t('Search')} />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('Flat, payee, UTR, receipt…')}
+            className="pl-10"
+            aria-label={t('Search')}
+          />
         </div>
-        <Button variant={activeFilters ? 'default' : 'outline'} size="icon" onClick={() => setShowFilters((v) => !v)} aria-label={t('Filters')} aria-expanded={showFilters}>
+        <Button
+          variant={activeFilters ? 'default' : 'outline'}
+          size="icon"
+          onClick={() => setShowFilters((v) => !v)}
+          aria-label={t('Filters')}
+          aria-expanded={showFilters}
+        >
           <Filter />
         </Button>
       </div>
       {showFilters && (
         <div className="mb-3 grid grid-cols-1 gap-2 rounded-2xl border bg-card p-3 sm:grid-cols-3">
           {scope === 'society' && (
-            <NativeSelect value={flat} onChange={(e) => setFlat(e.target.value)} aria-label={t('Flat')} className="sm:col-span-3">
+            <NativeSelect
+              value={flat}
+              onChange={(e) => setFlat(e.target.value)}
+              aria-label={t('Flat')}
+              className="sm:col-span-3"
+            >
               <option value="">{t('All flats')}</option>
               {units.data?.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -175,13 +259,22 @@ export default function LedgerPage() {
               </option>
             ))}
           </NativeSelect>
-          <NativeSelect value={dir} onChange={(e) => setDir(e.target.value as '' | 'credit' | 'debit')} aria-label={t('Type')}>
+          <NativeSelect
+            value={dir}
+            onChange={(e) => setDir(e.target.value as '' | 'credit' | 'debit')}
+            aria-label={t('Type')}
+          >
             <option value="">{t('Money in and out')}</option>
             <option value="credit">{t('Money in (credits)')}</option>
             <option value="debit">{t('Money out (debits)')}</option>
           </NativeSelect>
           {activeFilters > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => (setFund(''), setDir(''), setPeriod(''), setFlat(''))} className="sm:col-span-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => (setFund(''), setDir(''), setPeriod(''), setFlat(''))}
+              className="sm:col-span-3"
+            >
               <RotateCcw /> {t('Clear filters')}
             </Button>
           )}
@@ -193,21 +286,44 @@ export default function LedgerPage() {
       ) : q.error && !q.data ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : rows.length === 0 ? (
-        <EmptyState icon={<ReceiptText className="size-7" />} title={t('No entries')} hint={t('Payments and expenses will show up here.')} />
+        <EmptyState
+          icon={<ReceiptText className="size-7" />}
+          title={t('No entries')}
+          hint={
+            fund || dir || period || search || (scope === 'society' && flat)
+              ? t(
+                  'Nothing matches these filters. Payments are listed by the date they were received. Try All months.',
+                )
+              : t('Payments and expenses will show up here. Money not yet paid is on the Dues page.')
+          }
+        />
       ) : (
         <div className="space-y-4">
           {Object.entries(byDate).map(([date, list]) => (
             <section key={date}>
-              <h2 className="mb-1.5 px-1 text-[12px] font-bold uppercase tracking-wider text-muted-foreground">{formatDate(date)}</h2>
+              <h2 className="mb-1.5 px-1 text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
+                {formatDate(date)}
+              </h2>
               <div className="overflow-hidden rounded-2xl border bg-card shadow-card">
                 {list.map((r, i) => (
-                  <EntryRow key={r.id} r={r} cats={cats.data} onClick={() => setSelected(r)} first={i === 0} />
+                  <EntryRow
+                    key={r.id}
+                    r={r}
+                    cats={cats.data}
+                    onClick={() => setSelected(r)}
+                    first={i === 0}
+                  />
                 ))}
               </div>
             </section>
           ))}
           {q.hasNextPage && (
-            <Button variant="outline" className="w-full" onClick={() => q.fetchNextPage()} loading={q.isFetchingNextPage}>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => q.fetchNextPage()}
+              loading={q.isFetchingNextPage}
+            >
               {t('Load more')}
             </Button>
           )}
@@ -221,22 +337,50 @@ export default function LedgerPage() {
   );
 }
 
-function EntryRow({ r, onClick, first, cats }: { r: LedgerRow; onClick: () => void; first: boolean; cats?: { code: string; label: string }[] }) {
+function EntryRow({
+  r,
+  onClick,
+  first,
+  cats,
+}: {
+  r: LedgerRow;
+  onClick: () => void;
+  first: boolean;
+  cats?: { code: string; label: string }[];
+}) {
   const { t } = useTranslation();
   const isTransfer = r.category === 'transfer';
-  const Icon = isTransfer ? ArrowLeftRight : r.reverses_entry_id ? Undo2 : r.direction === 'credit' ? ArrowDownLeft : ArrowUpRight;
+  const Icon = isTransfer
+    ? ArrowLeftRight
+    : r.reverses_entry_id
+      ? Undo2
+      : r.direction === 'credit'
+        ? ArrowDownLeft
+        : ArrowUpRight;
   const isEv = r.fund_kind === 'event' && r.category === 'event_contribution';
-  const title = isEv && r.unit_code ? `${r.fund_name} · ${r.unit_code}` : r.unit_code ? `${r.unit_code} · ${categoryLabel(r.category, cats)}` : r.payee ? `${r.payee}` : categoryLabel(r.category, cats);
+  const title =
+    isEv && r.unit_code
+      ? `${r.fund_name} · ${r.unit_code}`
+      : r.unit_code
+        ? `${r.unit_code} · ${categoryLabel(r.category, cats)}`
+        : r.payee
+          ? `${r.payee}`
+          : categoryLabel(r.category, cats);
   return (
     <button
       type="button"
       onClick={onClick}
-      className={cn('flex min-h-[64px] w-full cursor-pointer items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-secondary/50', !first && 'border-t')}
+      className={cn(
+        'flex min-h-[64px] w-full cursor-pointer items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-secondary/50',
+        !first && 'border-t',
+      )}
     >
       <span
         className={cn(
           'grid size-10 shrink-0 place-items-center rounded-xl',
-          r.direction === 'credit' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+          r.direction === 'credit'
+            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+            : 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
         )}
         aria-hidden
       >
@@ -245,7 +389,11 @@ function EntryRow({ r, onClick, first, cats }: { r: LedgerRow; onClick: () => vo
       <div className="min-w-0 flex-1">
         <p className={cn('truncate text-[14.5px] font-semibold', r.is_reversed && 'struck')}>{title}</p>
         <p className="truncate text-[12px] text-muted-foreground">
-          {isEv && <span className="mr-1 rounded-full bg-lime-100 px-1.5 py-px text-[10px] font-bold uppercase text-lime-800 dark:bg-lime-500/15 dark:text-lime-300">{t('Event')}</span>}
+          {isEv && (
+            <span className="mr-1 rounded-full bg-lime-100 px-1.5 py-px text-[10px] font-bold uppercase text-lime-800 dark:bg-lime-500/15 dark:text-lime-300">
+              {t('Event')}
+            </span>
+          )}
           {r.reverses_entry_id ? t('Reversal') + ' · ' : ''}
           {r.payee && r.unit_code ? r.payee + ' · ' : ''}
           {!r.unit_code && r.payee ? categoryLabel(r.category, cats) + ' · ' : ''}
@@ -255,14 +403,29 @@ function EntryRow({ r, onClick, first, cats }: { r: LedgerRow; onClick: () => vo
         </p>
       </div>
       <div className="text-right">
-        <Money paise={r.signed_paise} sign tone="auto" className={cn('text-[15px] font-bold', r.is_reversed && 'struck')} />
-        {r.is_reversed && <p className="text-[10.5px] font-bold uppercase text-destructive">{t('Reversed')}</p>}
+        <Money
+          paise={r.signed_paise}
+          sign
+          tone="auto"
+          className={cn('text-[15px] font-bold', r.is_reversed && 'struck')}
+        />
+        {r.is_reversed && (
+          <p className="text-[10.5px] font-bold uppercase text-destructive">{t('Reversed')}</p>
+        )}
       </div>
     </button>
   );
 }
 
-function EntrySheet({ entry, onClose, cats }: { entry: LedgerRow | null; onClose: () => void; cats?: { code: string; label: string }[] }) {
+function EntrySheet({
+  entry,
+  onClose,
+  cats,
+}: {
+  entry: LedgerRow | null;
+  onClose: () => void;
+  cats?: { code: string; label: string }[];
+}) {
   const { t } = useTranslation();
   const m = useMember();
   const qc = useQueryClient();
@@ -271,7 +434,12 @@ function EntrySheet({ entry, onClose, cats }: { entry: LedgerRow | null; onClose
   const [confirm, setConfirm] = useState(false);
   const [idem] = useState(() => newIdemKey('rev'));
   const reverse = useMutation({
-    mutationFn: () => rpc('reverse_entry', { p_entry_id: entry!.id, p_reason: reason, p_idempotency_key: `${idem}-${entry!.id}` }),
+    mutationFn: () =>
+      rpc('reverse_entry', {
+        p_entry_id: entry!.id,
+        p_reason: reason,
+        p_idempotency_key: `${idem}-${entry!.id}`,
+      }),
     onSuccess: () => {
       toast.success(t('Entry reversed. Record the correct entry if needed.'));
       invalidateMoney(qc);
@@ -303,13 +471,20 @@ function EntrySheet({ entry, onClose, cats }: { entry: LedgerRow | null; onClose
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
-            <Money paise={e.signed_paise} sign tone="auto" className={cn('text-2xl font-extrabold', e.is_reversed && 'struck')} />
+            <Money
+              paise={e.signed_paise}
+              sign
+              tone="auto"
+              className={cn('text-2xl font-extrabold', e.is_reversed && 'struck')}
+            />
             {e.reverses_entry_id && <Badge variant="info">{t('Reversal')}</Badge>}
             {e.is_reversed && <Badge variant="danger">{t('Reversed')}</Badge>}
           </DialogTitle>
         </DialogHeader>
         {e.is_reversed && e.reversal_note && (
-          <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-[13px] text-rose-900 dark:bg-rose-500/10 dark:text-rose-200">{e.reversal_note}</p>
+          <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-[13px] text-rose-900 dark:bg-rose-500/10 dark:text-rose-200">
+            {e.reversal_note}
+          </p>
         )}
         <dl className="divide-y rounded-2xl border text-sm">
           {rows
@@ -339,9 +514,20 @@ function EntrySheet({ entry, onClose, cats }: { entry: LedgerRow | null; onClose
               {e.transfer_group ? ' ' + t('Both sides of this transfer will be reversed.') : ''}
             </p>
             <Field label={t('Reason')} hint={t('Visible in the ledger and audit log')}>
-              <Textarea rows={2} value={reason} onChange={(ev) => setReason(ev.target.value)} maxLength={300} placeholder={t('e.g. typo in amount')} />
+              <Textarea
+                rows={2}
+                value={reason}
+                onChange={(ev) => setReason(ev.target.value)}
+                maxLength={300}
+                placeholder={t('e.g. typo in amount')}
+              />
             </Field>
-            <Button variant="destructive" className="mt-3 w-full" disabled={reason.trim().length < 5} onClick={() => setConfirm(true)}>
+            <Button
+              variant="destructive"
+              className="mt-3 w-full"
+              disabled={reason.trim().length < 5}
+              onClick={() => setConfirm(true)}
+            >
               <Undo2 /> {t('Reverse entry')}
             </Button>
           </div>
