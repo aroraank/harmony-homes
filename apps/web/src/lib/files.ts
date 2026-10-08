@@ -1,4 +1,5 @@
-import { supabase, AppError } from './supabase';
+import { supabase, AppError, VIEW_ONLY_MESSAGE } from './supabase';
+import { isViewingAs } from './viewAsState';
 
 export const BUCKET = 'attachments';
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -37,6 +38,7 @@ async function compressImage(f: File): Promise<Blob> {
  *  claims/{userId}, concerns/new-{userId} or concerns/{concernId}, ledger/…, notices/…, settings/…
  */
 export async function uploadFile(societyId: string, kind: UploadKind, folder: string, file: File): Promise<string> {
+  if (isViewingAs()) throw new AppError(VIEW_ONLY_MESSAGE, '42501');
   const err = validateFile(file);
   if (err) throw new AppError(err);
   const body = await compressImage(file);

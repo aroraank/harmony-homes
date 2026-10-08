@@ -18,7 +18,8 @@ export type Permission =
   | 'manage_contacts'
   | 'manage_reminders'
   | 'manage_concerns'
-  | 'record_adjustment';
+  | 'record_adjustment'
+  | 'manage_meetings';
 
 export interface Membership {
   membership_id: string;
@@ -522,4 +523,25 @@ export interface AlertRow {
   details: Record<string, unknown>;
   created_at: string;
   resolved_at: string | null;
+}
+
+export interface Meeting {
+  id: string;
+  society_id: string;
+  title: string;
+  description: string | null;
+  status: 'draft' | 'published' | 'cancelled';
+  scope_type: 'all' | 'unit_types' | 'custom';
+  scope_unit_type_ids: string[];
+  scope_unit_ids: string[];
+  meeting_date: string;
+  start_time: string;
+  location: string | null;
+  created_by: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  audience_label: string;
+  agenda: { id: string; text: string }[];
+  created_by_name: string | null;
 }

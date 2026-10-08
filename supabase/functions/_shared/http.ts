@@ -76,7 +76,21 @@ export async function requireUser(req: Request, svc: SupabaseClient): Promise<Us
   if (!token) throw new HttpError(401, 'Please sign in again.');
   const { data, error } = await svc.auth.getUser(token);
   if (error || !data.user) throw new HttpError(401, 'Please sign in again.');
+  if (isViewOnlyToken(token)) {
+    throw new HttpError(403, 'View only: you are viewing as another member. Switch back to your own account to make changes.');
+  }
   return data.user;
+}
+
+/** "View as" sessions are OTP sign-ins (members always use a password) and must never change anything. */
+export function isViewOnlyToken(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const methods: string[] = (payload.amr ?? []).map((a: { method?: string }) => a.method ?? '');
+    return methods.some((m) => m === 'otp' || m === 'magiclink') && !methods.includes('password');
+  } catch {
+    return false;
+  }
 }
 
 export async function readJson<T = Record<string, unknown>>(req: Request): Promise<T> {
@@ -110,12 +124,22 @@ export function generateTempPassword(length = 12): string {
   return out.join('');
 }
 
-export function passwordProblems(pw: string, username: string, current?: string): string[] {
+export function generateTempPin(length = 6): string {
   const out: string[] = [];
-  if (typeof pw !== 'string' || pw.length < 8) out.push('at least 8 characters');
-  if (pw && pw.length > 72) out.push('at most 72 characters');
-  if (pw && username && pw.toLowerCase() === username.toLowerCase()) out.push('not your username');
-  if (pw && current && pw === current) out.push('different from the current / temporary password');
-  if (pw && /^\s|\s$/.test(pw)) out.push('no leading or trailing spaces');
+  while (out.length < length) {
+    const buf = new Uint8Array(length * 2);
+    crypto.getRandomValues(buf);
+    for (const b of buf) if (b < 250 && out.length < length) out.push(String(b % 10));
+  }
+  return out.join('');
+}
+
+/** PIN rules (mirrors packages/shared): numbers only, 6 to 12 digits */
+export function passwordProblems(pw: string, _username?: string, current?: string): string[] {
+  const out: string[] = [];
+  if (typeof pw !== 'string' || !/^\d*$/.test(pw)) out.push('numbers only');
+  if (typeof pw !== 'string' || pw.length < 6) out.push('at least 6 digits');
+  if (typeof pw === 'string' && pw.length > 12) out.push('at most 12 digits');
+  if (pw && current && pw === current) out.push('different from the current / temporary PIN');
   return out;
 }

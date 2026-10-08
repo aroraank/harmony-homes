@@ -17,6 +17,7 @@ import { FileInput } from '@/components/FileInput';
 import { ConfirmSheet } from '@/components/ConfirmSheet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { AmountInput } from '@/components/AmountInput';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -204,7 +205,7 @@ export default function RecordExpensePage() {
         <Field label={t('Amount')} error={errors.amount}>
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">₹</span>
-            <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular pl-8 text-xl font-bold" />
+            <AmountInput value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular pl-8 text-xl font-bold" />
           </div>
         </Field>
         {goesNegative && (
@@ -236,7 +237,7 @@ export default function RecordExpensePage() {
           </Field>
         )}
         <Field label={t('UTR / reference')} optional error={errors.ref}>
-          <Input value={ref} onChange={(e) => setRef(e.target.value.toUpperCase())} autoCapitalize="characters" />
+          <Input value={ref} onChange={(e) => setRef(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 30))} autoCapitalize="characters" />
         </Field>
         <Field label={t('Bill photo')} optional>
           <FileInput value={file} onChange={setFile} label={t('Add bill photo or PDF')} />

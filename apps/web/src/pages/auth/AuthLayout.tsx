@@ -1,11 +1,29 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { brand } from '@/brand';
+import { CreditLine } from '@/components/CreditLine';
 
 /** Shared look for sign-in, registration and password screens */
 export function AuthLayout({ title, subtitle, children, society }: { title: string; subtitle?: string; children: ReactNode; society?: string | null }) {
+  const [imgOk, setImgOk] = useState(true);
   return (
     <div className="min-h-dvh bg-background">
-      <div className="hero-gradient safe-top relative overflow-hidden px-6 pb-20 pt-10 text-white">
+      <div className="hero-gradient safe-top relative overflow-hidden px-6 pb-20 pt-10 text-white md:pb-28 md:pt-14">
+        {imgOk && (
+          <>
+            {/* society photo: tall version on phones, wide on tablets/laptops; hidden if the file is missing */}
+            <picture>
+              <source media="(min-width: 768px)" srcSet={brand.loginImageWide} />
+              <img
+                src={brand.loginImageTall}
+                alt=""
+                aria-hidden
+                onError={() => setImgOk(false)}
+                className="absolute inset-0 size-full object-cover object-center"
+              />
+            </picture>
+            <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-emerald-950/70 via-emerald-900/55 to-emerald-800/80" />
+          </>
+        )}
         <div aria-hidden className="absolute -right-10 -top-10 size-48 rounded-full bg-lime-300/20 blur-2xl" />
         <div className="relative mx-auto max-w-md">
           <div className="flex items-center gap-3">
@@ -21,6 +39,7 @@ export function AuthLayout({ title, subtitle, children, society }: { title: stri
       </div>
       <div className="relative mx-auto -mt-12 max-w-md px-4 pb-10">
         <div className="rounded-3xl border bg-card p-5 shadow-xl animate-fade-up">{children}</div>
+        <CreditLine className="mt-5" />
       </div>
     </div>
   );

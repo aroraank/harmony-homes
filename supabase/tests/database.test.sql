@@ -62,7 +62,7 @@ insert into public.memberships (user_id, society_id, unit_id, role, status) valu
 create table public._t (k text primary key, v text);
 grant select on public._t to authenticated, anon;
 insert into public._t values ('soc_a', :'soc_a'), ('soc_b', :'soc_b'), ('gen_a', :'gen_a'), ('u_p1gf', :'u_p1gf'),
-  ('u_p2gf', :'u_p2gf'), ('u_b1', :'u_b1'), ('t_3bhk', :'t_3bhk'), ('r1', :'r1'), ('r2', :'r2'), ('ad', :'ad'), ('sa', :'sa');
+  ('u_p2gf', :'u_p2gf'), ('u_b1', :'u_b1'), ('t_3bhk', :'t_3bhk'), ('r1', :'r1'), ('r2', :'r2'), ('ad', :'ad'), ('sa', :'sa'), ('u_p9gf', :'u_p9gf');
 create or replace function public._tv(p text) returns uuid language sql stable as $$ select v::uuid from public._t where k = p $$;
 grant execute on function public._tv(text) to authenticated, anon;
 
@@ -485,7 +485,7 @@ end $$;
 do $$ begin
   perform public.dashboard(public._tv('soc_a'));
   perform public.month_report(public._tv('soc_a'), '2026-10');
-  perform public.unit_statement(public._tv('u_p1gf'));
+  perform public.unit_statement(public._tv('u_p2gf'));
   perform public.defaulters(public._tv('soc_a'));
   perform public.trend_months(public._tv('soc_a'), 12);
   perform public.my_pay_info(public._tv('soc_a'));
@@ -493,6 +493,129 @@ do $$ begin
   if (select count(*) from public.v_ledger) = 0 then raise exception using errcode = 'TF001', message = 'TEST FAIL: v_ledger empty'; end if;
   if (select count(*) from public.v_dues) = 0 then raise exception using errcode = 'TF001', message = 'TEST FAIL: v_dues empty'; end if;
 end $$;
+\echo '23. Pay for chosen months, surplus alerts, privacy, statements'
+:as_ad
+do $$
+declare
+  p jsonb; v jsonb; d1 uuid; d2 uuid; n int; tot bigint; adv bigint; st jsonb; ls jsonb;
+begin
+  p := public.preview_allocation(public._tv('u_p9gf'), 0);
+  n := jsonb_array_length(p -> 'pending');
+  if n < 2 then raise exception using errcode = 'TF001', message = 'TEST FAIL: expected 2+ open months for P9-GF, got ' || n; end if;
+  d1 := (p -> 'pending' -> 0 ->> 'due_id')::uuid;           -- oldest
+  d2 := (p -> 'pending' -> (n - 1) ->> 'due_id')::uuid;     -- newest
+  -- pay only the newest month exactly
+  v := public.record_payment(public._tv('u_p9gf'), (p -> 'pending' -> (n - 1) ->> 'remaining_paise')::bigint, current_date, 'cash',
+         null, null, null, 'idem-m-1', null, null, false, array[d2]);
+  if public.due_remaining_paise(d2) <> 0 then raise exception using errcode = 'TF001', message = 'TEST FAIL: chosen month not paid'; end if;
+  if public.due_remaining_paise(d1) <= 0 then raise exception using errcode = 'TF001', message = 'TEST FAIL: older month must stay open'; end if;
+  if exists (select 1 from jsonb_array_elements(public.preview_allocation(public._tv('u_p9gf'), 0) -> 'pending') x where (x ->> 'due_id')::uuid = d2) then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: paid month still offered';
+  end if;
+  begin
+    perform public.record_payment(public._tv('u_p9gf'), 1000, current_date, 'cash', null, null, null, 'idem-m-2', null, null, false, array[d2]);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: paid month accepted again';
+  exception when sqlstate 'P0001' then null; end;
+  -- pay a chosen month with extra: the extra settles older pending, no advance yet
+  p := public.preview_allocation(public._tv('u_p9gf'), 0);
+  tot := (p ->> 'pending_total_paise')::bigint;
+  -- a big overpayment => surplus
+  v := public.record_payment(public._tv('u_p9gf'), tot + 25000, current_date, 'cash', null, null, null, 'idem-m-3');
+  adv := public.unit_advance_paise(public._tv('u_p9gf'), public._tv('gen_a'));
+  if adv <> 25000 then raise exception using errcode = 'TF001', message = 'TEST FAIL: advance should be 25000, got ' || adv; end if;
+  -- statement maths: owed - advance = closing balance
+  st := public.unit_statement(public._tv('u_p9gf'));
+  ls := public.unit_ledger_statement(public._tv('u_p9gf'), null, null);
+  if (ls ->> 'opening_paise')::bigint + (select coalesce(sum((x ->> 'debit_paise')::bigint - (x ->> 'credit_paise')::bigint), 0) from jsonb_array_elements(ls -> 'rows') x)
+       <> (st -> 'totals' ->> 'pending_paise')::bigint - (st -> 'totals' ->> 'advance_paise')::bigint then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: flat statement does not balance';
+  end if;
+  ls := public.ledger_statement(public._tv('soc_a'), null, null, null);
+  if (ls ->> 'opening_paise')::bigint + (select coalesce(sum(case when x ->> 'direction' = 'credit' then (x ->> 'amount_paise')::bigint else -(x ->> 'amount_paise')::bigint end), 0) from jsonb_array_elements(ls -> 'rows') x)
+       <> public.society_balance_paise(public._tv('soc_a')) then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: society statement does not balance';
+  end if;
+  perform public.log_statement_export(public._tv('soc_a'), 'ledger', null, current_date - 30, current_date);
+end $$;
+
+-- admin and super admin were both told about the surplus
+:as_owner
+do $$ begin
+  if (select count(distinct user_id) from public.notifications where kind = 'surplus_payment'
+        and user_id in (public._tv('sa'), public._tv('ad'))) <> 2 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: admin + super admin must be told about surplus';
+  end if;
+end $$;
+
+-- a resident sees who paid extra, but not other flats' dues
+:as_r2
+do $$
+declare mine int; others int; r jsonb;
+begin
+  if not exists (select 1 from jsonb_array_elements(public.surplus_board(public._tv('soc_a'))) x where x ->> 'unit_code' = 'P9-GF' and (x ->> 'advance_paise')::bigint = 25000) then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: surplus board must list the advance payer';
+  end if;
+  select count(*) into others from public.dues where unit_id = public._tv('u_p1gf');
+  if others <> 0 then raise exception using errcode = 'TF001', message = 'TEST FAIL: resident can read another flat''s dues'; end if;
+  select count(*) into mine from public.dues where unit_id = public._tv('u_p2gf');
+  if mine = 0 then raise exception using errcode = 'TF001', message = 'TEST FAIL: resident cannot read own dues'; end if;
+  begin
+    perform public.unit_statement(public._tv('u_p1gf'));
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: other flat statement readable';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.unit_ledger_statement(public._tv('u_p1gf'), null, null);
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: other flat ledger statement readable';
+  exception when insufficient_privilege then null; end;
+  if exists (select 1 from jsonb_array_elements(public.defaulters(public._tv('soc_a'))) x where x ->> 'unit_code' <> 'P2-GF') then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: defaulters leaks other flats';
+  end if;
+  r := public.month_report(public._tv('soc_a'), '2026-10');
+  if exists (select 1 from jsonb_array_elements(r -> 'units') x where x ->> 'status' in ('pending', 'partial') and x ->> 'unit_code' <> 'P2-GF') then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: month report leaks other flats'' pending';
+  end if;
+  perform public.ledger_statement(public._tv('soc_a'), current_date - 60, current_date, null);
+  perform public.unit_ledger_statement(public._tv('u_p2gf'), current_date - 60, current_date);
+end $$;
+
+\echo '24. Forgot-PIN requests and society position'
+:as_anon
+do $$ begin
+  perform public.request_pin_reset('plot-colony', 'P1-GF');
+  perform public.request_pin_reset('plot-colony', 'P1-GF');   -- second one inside an hour is ignored
+  perform public.request_pin_reset('plot-colony', 'NOPE-99');  -- unknown flat: same silent answer
+  perform public.request_pin_reset('no-such-society', 'P1-GF');
+end $$;
+:as_owner
+do $$ declare n int; begin
+  select count(*) into n from public.pin_reset_requests;
+  if n <> 1 then raise exception using errcode = 'TF001', message = 'TEST FAIL: expected exactly 1 pin request, got ' || n; end if;
+  if (select count(distinct user_id) from public.notifications where kind = 'pin_reset_request'
+        and user_id in (public._tv('sa'), public._tv('ad'))) <> 2 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: admin + super admin must be told about the PIN request';
+  end if;
+  perform public._after_password_reset(public._tv('sa'), public._tv('r1'));
+  if exists (select 1 from public.pin_reset_requests where resolved_at is null) then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: reset must close the request';
+  end if;
+end $$;
+:as_r2
+do $$ declare p jsonb; begin
+  if (select count(*) from public.pin_reset_requests) <> 0 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: resident can read PIN requests';
+  end if;
+  p := public.society_position(public._tv('soc_a'));
+  if jsonb_array_length(p -> 'funds') < 1 or (p -> 'totals' ->> 'advance_paise')::bigint < 25000 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: society position missing figures';
+  end if;
+end $$;
+:as_ad
+do $$ begin
+  if (select count(*) from public.pin_reset_requests) <> 1 then
+    raise exception using errcode = 'TF001', message = 'TEST FAIL: admin cannot read PIN requests';
+  end if;
+end $$;
+
 :as_owner
 do $$ declare v jsonb; begin
   v := public.run_daily_jobs();

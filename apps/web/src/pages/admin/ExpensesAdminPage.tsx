@@ -1,3 +1,4 @@
+import { IntInput } from '@/components/IntInput';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +16,7 @@ import { Field } from '@/components/Field';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { AmountInput } from '@/components/AmountInput';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -180,10 +182,10 @@ export default function ExpensesAdminPage() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('Amount')}>
-                <Input inputMode="decimal" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+                <AmountInput value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
               </Field>
               <Field label={t('Day of month')}>
-                <Input type="number" min={1} max={28} value={form.day} onChange={(e) => setForm((f) => ({ ...f, day: e.target.value }))} />
+                <IntInput max={28} value={form.day} onChange={(e) => setForm((f) => ({ ...f, day: e.target.value }))} />
               </Field>
             </div>
             <Field label={t('Category')}>

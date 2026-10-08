@@ -13,6 +13,7 @@ import { ConfirmSheet } from '@/components/ConfirmSheet';
 import { EmptyState } from '@/components/States';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { AmountInput } from '@/components/AmountInput';
 import { Input, NativeSelect } from '@/components/ui/input';
 
 export default function TransferPage() {
@@ -79,7 +80,7 @@ export default function TransferPage() {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('Amount')}>
-            <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular font-bold" />
+            <AmountInput value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular font-bold" />
           </Field>
           <Field label={t('Date')}>
             <Input type="date" value={date} max={istToday()} onChange={(e) => setDate(e.target.value)} />

@@ -1,3 +1,4 @@
+import { PhoneInput } from '@/components/PhoneInput';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -123,10 +124,10 @@ export default function ProfilePage() {
           {m.unit_name ? ` · ${m.unit_name}` : ''}
         </p>
         <Field label={t('Full name')}>
-          <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+          <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} autoComplete="name" />
         </Field>
         <Field label={t('Mobile number')} optional hint={t('Visible only to admins')}>
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="numeric" />
+          <PhoneInput value={phone} onChange={(e) => setPhone(e.target.value)} />
         </Field>
         <Button onClick={saveProfile} loading={saving}>
           {t('Save profile')}
@@ -222,7 +223,7 @@ export default function ProfilePage() {
       <SectionTitle>{t('Security & privacy')}</SectionTitle>
       <Card className="divide-y">
         <Link to="/change-password" className="flex min-h-14 items-center gap-3 px-4 hover:bg-secondary/50">
-          <KeyRound className="size-5 text-primary" /> <span className="font-semibold">{t('Change password')}</span>
+          <KeyRound className="size-5 text-primary" /> <span className="font-semibold">{t('Change PIN')}</span>
         </Link>
         <div className="flex gap-3 px-4 py-3 text-[12.5px] text-muted-foreground">
           <ShieldCheck className="size-5 shrink-0 text-primary" />

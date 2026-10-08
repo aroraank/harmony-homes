@@ -9,6 +9,7 @@ import { rpc } from '@/lib/supabase';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { CardSkeleton, ErrorState } from '@/components/States';
 import { ListRow } from '@/components/ListRow';
+import { StatTile } from '@/components/StatTile';
 import { Card } from '@/components/ui/card';
 
 type Trend = { period: string; label: string; collected_paise: number; spent_paise: number; closing_paise: number };
@@ -32,6 +33,7 @@ export default function ReportsPage() {
   const { t } = useTranslation();
   const m = useMember();
   const q = useQuery({ queryKey: ['trend', m.societyId], queryFn: () => rpc<Trend[]>('trend_months', { p_society: m.societyId, p_months: 12 }) });
+  const owedQ = useQuery({ queryKey: ['defaultersTotal', m.societyId], queryFn: () => rpc<number>('society_owed_total', { p_society: m.societyId }) });
   const data = (q.data ?? []).map((d) => ({
     label: d.label.replace(/ (\d{2})(\d{2})$/, " '$2"),
     [t('Collected')]: d.collected_paise / 100,
@@ -40,12 +42,28 @@ export default function ReportsPage() {
   }));
   const axis = { fontSize: 11, fill: 'hsl(var(--muted-foreground))' };
 
+  // Two different "shortfall" numbers: what members still owe (live, from unpaid dues),
+  // and cash shortfall months where spending outran collection (covered from reserves).
+  const outstandingFromMembers = owedQ.data ?? 0;
+  const cashShortfall12mo = (q.data ?? []).reduce((s, d) => s + Math.max(d.spent_paise - d.collected_paise, 0), 0);
+
   return (
     <div className="animate-fade-up">
       <PageHeader title={t('Reports')} subtitle={t('Open to every member — transparency builds trust')} back="/more" />
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <Link to="/reports/defaulters">
+          <StatTile label={t('Owed by members (now)')} value={formatINR(outstandingFromMembers)} tone={outstandingFromMembers > 0 ? 'bad' : 'default'} />
+        </Link>
+        <StatTile label={t('Cash shortfall (12mo)')} value={formatINR(cashShortfall12mo)} tone={cashShortfall12mo > 0 ? 'warn' : 'default'} />
+      </div>
+      <p className="-mt-1 mb-2 px-1 text-[12px] text-muted-foreground">
+        {t('"Owed by members" is what\'s unpaid right now. "Cash shortfall" is months where spending outran collections and the gap was covered from reserves — see each month\'s report for the exact figure.')}
+      </p>
+
       <div className="space-y-2.5">
         <ListRow to={`/reports/month/${currentPeriod()}`} icon={<CalendarRange />} title={t('Month view')} subtitle={t('Opening, collected, spent, shortfall and closing')} />
-        <ListRow to="/reports/defaulters" icon={<AlertTriangle />} title={t('Pending list')} subtitle={t('Flats with overdue dues, share on WhatsApp')} />
+        <ListRow to="/reports/defaulters" icon={<AlertTriangle />} title={t('Pending list')} subtitle={m.isAdmin ? t('Flats with overdue dues, share on WhatsApp') : t('Your own overdue dues')} />
         <ListRow to={m.unit_id ? `/reports/unit/${m.unit_id}` : '/reports/unit'} icon={<Home />} title={t('Flat statement')} subtitle={t('Every due and payment of a flat')} />
         <ListRow to="/reports/payees" icon={<UserRound />} title={t('Payee history')} subtitle={t('e.g. all payments to the security guard')} />
         <ListRow to="/ledger" icon={<FileSpreadsheet />} title={t('Full ledger')} subtitle={t('Search and export every entry')} />

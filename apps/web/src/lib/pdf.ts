@@ -242,3 +242,116 @@ export async function shareOrDownloadPdf(blob: Blob, filename: string, text?: st
   const { downloadBlob } = await import('./csv');
   downloadBlob(filename, blob);
 }
+
+export interface StatementLine {
+  date: string;
+  description: string;
+  ref: string;
+  /** first / second amount column (paise) */
+  a: number;
+  b: number;
+  /** change of the running balance caused by this line (paise) */
+  delta: number;
+}
+
+/**
+ * Accountant-style statement: opening balance, every line with a running balance, totals and closing balance.
+ * `balanceMode` 'cash' prints the balance as it is; 'owed' prints Dr (flat owes) / Cr (flat is ahead).
+ */
+export async function statementPdf(o: {
+  title: string;
+  societyName: string;
+  subject: string;
+  from: string;
+  to: string;
+  headA: string;
+  headB: string;
+  opening: number;
+  lines: StatementLine[];
+  balanceMode: 'cash' | 'owed';
+  note?: string;
+}): Promise<Blob> {
+  const { jsPDF, autoTable } = await loadJsPdf();
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const num = (p: number) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(p) / 100);
+  const bal = (p: number) => (o.balanceMode === 'owed' ? `${num(p)} ${p >= 0 ? 'Dr' : 'Cr'}` : `${p < 0 ? '-' : ''}${num(p)}`);
+
+  doc.setFillColor(5, 150, 105);
+  doc.rect(0, 0, W, 26, 'F');
+  const logo = await logoPng();
+  if (logo) doc.addImage(logo, 'PNG', 10, 6, 14, 14);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text(brand.name, 28, 12);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(o.societyName, 28, 18);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(o.title, W - 10, 12, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`${formatDate(o.from)} to ${formatDate(o.to)}`, W - 10, 18, { align: 'right' });
+
+  doc.setTextColor(20, 30, 28);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.text(o.subject, 10, 34);
+
+  let run = o.opening;
+  const totalA = o.lines.reduce((s, l) => s + l.a, 0);
+  const totalB = o.lines.reduce((s, l) => s + l.b, 0);
+  const closing = o.opening + o.lines.reduce((s, l) => s + l.delta, 0);
+  const body: (string | number)[][] = [['', 'Opening balance', '', '', '', bal(o.opening)]];
+  for (const l of o.lines) {
+    run += l.delta;
+    body.push([formatDate(l.date), l.description, l.ref, l.a ? num(l.a) : '', l.b ? num(l.b) : '', bal(run)]);
+  }
+  body.push(['', 'Total for the period', '', num(totalA), num(totalB), '']);
+  body.push(['', 'Closing balance', '', '', '', bal(closing)]);
+
+  autoTable(doc, {
+    startY: 38,
+    head: [['Date', 'Particulars', 'Ref', `${o.headA} (Rs.)`, `${o.headB} (Rs.)`, 'Balance (Rs.)']],
+    body,
+    theme: 'striped',
+    headStyles: { fillColor: [5, 150, 105], fontSize: 8.5 },
+    styles: { fontSize: 8, cellPadding: 1.6, overflow: 'linebreak' },
+    columnStyles: {
+      0: { cellWidth: 21 },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 26 },
+      3: { halign: 'right', cellWidth: 25 },
+      4: { halign: 'right', cellWidth: 25 },
+      5: { halign: 'right', cellWidth: 30, fontStyle: 'bold' },
+    },
+    margin: { left: 10, right: 10, bottom: 16 },
+    didParseCell: (d) => {
+      const first = d.row.index === 0;
+      const last = d.row.index >= body.length - 2;
+      if (d.section === 'body' && (first || last)) {
+        d.cell.styles.fontStyle = 'bold';
+        d.cell.styles.fillColor = [220, 245, 235];
+      }
+    },
+  });
+
+  if (o.note) {
+    const y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8.5);
+    doc.setTextColor(60, 70, 66);
+    doc.text(doc.splitTextToSize(o.note, W - 20), 10, y);
+  }
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7.5);
+    doc.setTextColor(120, 130, 126);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Computer-generated statement · ${formatDateTime(new Date().toISOString())} IST · Page ${i} of ${pages}`, W / 2, 290, { align: 'center' });
+  }
+  return doc.output('blob');
+}

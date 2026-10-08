@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Eye, EyeOff, KeyRound, LogIn, Building2 } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, LogIn, Building2, Send } from 'lucide-react';
+import { toast } from 'sonner';
 import { usernameToEmail } from '@harmony/shared';
 import { useAuth } from '@/lib/auth';
 import { DEFAULT_SOCIETY_SLUG, supabase } from '@/lib/supabase';
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/Field';
 import { Alert } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AuthLayout } from './AuthLayout';
 
 const LOCK_KEY = 'hh-login-lock';
@@ -30,6 +32,9 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [forgot, setForgot] = useState(false);
+  const [forgotUser, setForgotUser] = useState('');
+  const [forgotBusy, setForgotBusy] = useState(false);
 
   const lock = useMemo(() => {
     try {
@@ -64,7 +69,7 @@ export default function LoginPage() {
     if (lockedFor) return;
     const s = slug.trim().toLowerCase();
     if (!s) return setError(t('Enter your society code.'));
-    if (!username.trim() || !password) return setError(t('Enter your username and password.'));
+    if (!username.trim() || !password) return setError(t('Enter your username and PIN.'));
     setBusy(true);
     const { error: err } = await supabase.auth.signInWithPassword({ email: usernameToEmail(username, s), password });
     setBusy(false);
@@ -79,7 +84,7 @@ export default function LoginPage() {
           ? t("Can't reach the server. Check your internet connection.")
           : /rate|too many/i.test(err.message)
             ? t('Too many attempts. Please wait a minute and try again.')
-            : t('Wrong username or password.'),
+            : t('Wrong username or PIN.'),
       );
       return;
     }
@@ -93,7 +98,7 @@ export default function LoginPage() {
       <form onSubmit={submit} className="space-y-4" noValidate>
         {editSlug ? (
           <Field label={t('Society code')} hint={society.data ? society.data.name : slug.length >= 2 && !society.isLoading ? t('Society not found') : t('Given by your committee')}>
-            <Input value={slug} onChange={(e) => setSlug(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="plot-colony" />
+            <Input value={slug} maxLength={40} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="plot-colony" />
           </Field>
         ) : (
           <button
@@ -118,20 +123,22 @@ export default function LoginPage() {
             inputMode="text"
           />
         </Field>
-        <Field label={t('Password')}>
+        <Field label={t('PIN')}>
           <div className="relative">
             <Input
               type={show ? 'text' : 'password'}
+              inputMode="numeric"
+              maxLength={72}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
-              className="pr-12"
+              className="tabular pr-12 tracking-[0.2em]"
             />
             <button
               type="button"
               onClick={() => setShow((v) => !v)}
               className="absolute right-1 top-1/2 grid size-10 -translate-y-1/2 cursor-pointer place-items-center rounded-lg text-muted-foreground hover:bg-muted"
-              aria-label={show ? t('Hide password') : t('Show password')}
+              aria-label={show ? t('Hide PIN') : t('Show PIN')}
             >
               {show ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
             </button>
@@ -144,8 +151,19 @@ export default function LoginPage() {
         </Button>
         <p className="flex items-start gap-2 text-[12.5px] text-muted-foreground">
           <KeyRound className="mt-0.5 size-4 shrink-0" />
-          {t('Forgot your password? Ask the society admin to reset it. Never share your password.')}
+          {t('Never share your PIN with anyone.')}
         </p>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => {
+            setForgotUser(username);
+            setForgot(true);
+          }}
+        >
+          {t('Forgot PIN? Ask the admin')}
+        </Button>
       </form>
       <div className="mt-5 flex items-center justify-between border-t pt-4 text-sm">
         <Link to="/register" className="font-semibold text-primary hover:underline">
@@ -155,11 +173,54 @@ export default function LoginPage() {
           type="button"
           className="cursor-pointer font-semibold text-muted-foreground hover:text-foreground"
           style={{ fontFamily: 'system-ui, sans-serif' }}
-          onClick={() => setLanguage(i18n.language === 'hi' ? 'en' : 'hi')}
+          onClick={() => {
+            setLanguage(i18n.language === 'hi' ? 'en' : 'hi');
+            try {
+              window.sessionStorage.setItem('hh-lang-picked', '1');
+            } catch {
+              /* ignore */
+            }
+          }}
         >
           {i18n.language === 'hi' ? 'English' : 'हिन्दी'}
         </button>
       </div>
+      <Dialog open={forgot} onOpenChange={(o) => !forgotBusy && setForgot(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('Forgot your PIN?')}</DialogTitle>
+            <DialogDescription>
+              {t('Enter your flat code. The admin and super admin are told, set a new PIN for you and give it to you personally.')}
+            </DialogDescription>
+          </DialogHeader>
+          <Field label={t('Username')}>
+            <Input
+              value={forgotUser}
+              onChange={(e) => setForgotUser(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+              maxLength={40}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="P1-GF"
+            />
+          </Field>
+          <Button
+            size="lg"
+            className="w-full"
+            loading={forgotBusy}
+            disabled={forgotUser.trim().length < 2}
+            onClick={async () => {
+              setForgotBusy(true);
+              await supabase.rpc('request_pin_reset', { p_slug: slug.trim().toLowerCase(), p_username: forgotUser.trim() });
+              setForgotBusy(false);
+              setForgot(false);
+              toast.success(t('Request sent. The admin will give you a new PIN.'));
+            }}
+          >
+            <Send /> {t('Send request to admin')}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </AuthLayout>
   );
 }

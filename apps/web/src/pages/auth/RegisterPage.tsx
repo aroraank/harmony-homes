@@ -1,3 +1,5 @@
+import { PhoneInput } from '@/components/PhoneInput';
+import { PinInput } from '@/components/PinInput';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -27,10 +29,10 @@ const schema = z
     mobile: mobileSchema,
     unitTypeId: z.string().min(1, 'Choose your flat type'),
     unitId: z.string().min(1, 'Choose your flat'),
-    password: z.string().min(8, 'At least 8 characters').max(72, 'At most 72 characters'),
+    password: z.string().regex(/^\d{6,12}$/, 'PIN must be 6 to 12 digits, numbers only'),
     confirm: z.string(),
   })
-  .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'Passwords do not match' });
+  .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'PINs do not match' });
 
 type Form = z.input<typeof schema>;
 
@@ -57,12 +59,7 @@ export default function RegisterPage() {
   const onSubmit = form.handleSubmit(async (raw) => {
     setServerError(null);
     const v = schema.parse(raw);
-    const unit = opts.data?.units.find((u) => u.id === v.unitId);
-    if (unit && v.password.toLowerCase() === unit.code.toLowerCase()) {
-      form.setError('password', { message: t('Password must not be your flat code') });
-      return;
-    }
-    try {
+        try {
       const res = await invokeFn<{ ok: boolean; username: string }>('account', {
         action: 'register',
         society_slug: slug,
@@ -84,7 +81,7 @@ export default function RegisterPage() {
           <CheckCircle2 className="size-14 text-primary" />
           <p className="mt-3 font-semibold">{t('The admin will review and approve your registration.')}</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            {t('After approval, sign in with username {{u}} and the password you just chose.', { u: done })}
+            {t('After approval, sign in with username {{u}} and the PIN you just chose.', { u: done })}
           </p>
           <Button asChild className="mt-5 w-full" size="lg">
             <Link to="/login">{t('Back to sign in')}</Link>
@@ -101,10 +98,10 @@ export default function RegisterPage() {
       ) : (
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <Field label={t('Full name')} error={e.fullName?.message && t(e.fullName.message)}>
-            <Input {...form.register('fullName')} autoComplete="name" placeholder="Rohit Sharma" />
+            <Input {...form.register('fullName')} maxLength={60} autoComplete="name" placeholder="Rohit Sharma" />
           </Field>
           <Field label={t('Mobile number')} error={e.mobile?.message && t(e.mobile.message)} hint={t('10-digit Indian mobile')}>
-            <Input {...form.register('mobile')} type="tel" inputMode="numeric" autoComplete="tel-national" placeholder="98765 43210" />
+            <PhoneInput {...form.register('mobile')} placeholder="98765 43210" />
           </Field>
           <Field label={t('Flat type')} error={e.unitTypeId?.message && t(e.unitTypeId.message)}>
             <NativeSelect {...form.register('unitTypeId', { onChange: () => form.setValue('unitId', '') })}>
@@ -126,11 +123,11 @@ export default function RegisterPage() {
               ))}
             </NativeSelect>
           </Field>
-          <Field label={t('Password')} error={e.password?.message && t(e.password.message)} hint={t('At least 8 characters. Do not reuse your flat code.')}>
-            <Input {...form.register('password')} type="password" autoComplete="new-password" />
+          <Field label={t('PIN')} error={e.password?.message && t(e.password.message)} hint={t('6 to 12 digits, numbers only.')}>
+            <PinInput defaultShown value={form.watch('password') ?? ''} onChange={(v) => form.setValue('password', v, { shouldValidate: form.formState.isSubmitted })} />
           </Field>
-          <Field label={t('Confirm password')} error={e.confirm?.message && t(e.confirm.message)}>
-            <Input {...form.register('confirm')} type="password" autoComplete="new-password" />
+          <Field label={t('Confirm PIN')} error={e.confirm?.message && t(e.confirm.message)}>
+            <PinInput defaultShown value={form.watch('confirm') ?? ''} onChange={(v) => form.setValue('confirm', v, { shouldValidate: form.formState.isSubmitted })} />
           </Field>
           {serverError && <Alert variant="danger">{serverError}</Alert>}
           <Button type="submit" size="xl" variant="hero" className="w-full" loading={form.formState.isSubmitting}>

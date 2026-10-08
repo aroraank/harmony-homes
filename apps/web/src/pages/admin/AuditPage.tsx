@@ -113,8 +113,8 @@ export default function AuditPage() {
               </option>
             ))}
         </NativeSelect>
-        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-11 text-sm" aria-label={t('From')} />
-        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-11 text-sm" aria-label={t('To')} />
+        <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-11 text-sm" aria-label={t('From')} />
+        <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-11 text-sm" aria-label={t('To')} />
       </div>
       <label className="mb-3 flex cursor-pointer items-center gap-2 px-1 text-sm font-semibold">
         <Switch checked={riskyOnly} onCheckedChange={setRiskyOnly} /> {t('Only risky actions')}

@@ -39,6 +39,7 @@ export default function MorePage() {
   const install = useInstallPrompt();
 
   const society: Item[] = [
+    { to: '/meetings', label: t('Meetings'), Icon: CalendarClock },
     { to: '/concerns', label: m.isAdmin ? t('Concerns inbox') : t('My concerns'), Icon: MessageSquareWarning },
     { to: '/contacts', label: t('Contacts'), Icon: Phone },
     { to: '/reminders', label: t('Reminders'), Icon: BellRing },

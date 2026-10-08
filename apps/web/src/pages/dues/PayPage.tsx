@@ -29,6 +29,11 @@ import { Field } from '@/components/Field';
 import { FileInput } from '@/components/FileInput';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { AmountInput } from '@/components/AmountInput';
+import { DuePicker, sumRemaining, usePendingDues, type AllocPreview } from '@/components/DuePicker';
+import { PaymentBreakdown } from '@/components/PaymentBreakdown';
+import { ConfirmSheet } from '@/components/ConfirmSheet';
+import { useDebounced } from '@/lib/useDebounced';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -45,6 +50,8 @@ export default function PayPage() {
   const [amount, setAmount] = useState('');
   const [step, setStep] = useState<'pay' | 'claim' | 'done'>('pay');
   const [qrOpen, setQrOpen] = useState(false);
+  const [dueIds, setDueIds] = useState<string[]>([]);
+  const [confirm, setConfirm] = useState(false);
 
   // claim form
   const [paidOn, setPaidOn] = useState(istToday());
@@ -64,6 +71,17 @@ export default function PayPage() {
     const def = purpose.pending_paise > 0 ? purpose.pending_paise : purpose.kind === 'general' ? (info.data?.monthly_due_paise ?? 0) : 0;
     setAmount(paiseToInput(def));
   }, [purpose?.fund_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pendingQ = usePendingDues(info.data?.unit_id ?? '', purpose?.fund_id);
+  const claimPaise = parseRupeesToPaise(amount);
+  const dClaim = useDebounced(claimPaise);
+  const preview = useQuery({
+    queryKey: ['preview', info.data?.unit_id, purpose?.fund_id, dClaim, dueIds.join(',')],
+    enabled: confirm && !!info.data?.unit_id && !!purpose && !!dClaim,
+    staleTime: 0,
+    queryFn: () => rpc<AllocPreview>('preview_allocation', { p_unit_id: info.data!.unit_id, p_amount_paise: dClaim, p_fund_id: purpose!.fund_id, p_due_ids: dueIds.length ? dueIds : null }),
+  });
+  useEffect(() => setDueIds([]), [purpose?.fund_id]);
 
   const qr = useQuery({
     queryKey: ['qr', info.data?.upi_qr_path],
@@ -94,8 +112,24 @@ export default function PayPage() {
     }
   };
 
-  const submitClaim = async (e: React.FormEvent) => {
+  const pickMonths = (ids: string[]) => {
+    setDueIds(ids);
+    if (ids.length) setAmount(paiseToInput(sumRemaining(pendingQ.data?.pending, ids)));
+  };
+
+  const reviewClaim = (e: React.FormEvent) => {
     e.preventDefault();
+    setErr(null);
+    const p = parseRupeesToPaise(amount);
+    if (!p) return setErr(t('Enter the amount you paid.'));
+    const ref = normalizeUtr(utr);
+    if (referenceRequired(mode) && !UTR_RE.test(ref)) return setErr(t('Enter the UTR / transaction ID (6–30 letters or digits).'));
+    if (ref && !UTR_RE.test(ref)) return setErr(t('UTR / reference must be 6–30 letters or digits'));
+    if (paidOn > istToday()) return setErr(t('Date cannot be in the future'));
+    setConfirm(true);
+  };
+
+  const submitClaim = async () => {
     setErr(null);
     const p = parseRupeesToPaise(amount);
     if (!p) return setErr(t('Enter the amount you paid.'));
@@ -115,11 +149,14 @@ export default function PayPage() {
         p_screenshot_path: path,
         p_note: note || null,
         p_fund_id: purpose?.fund_id ?? null,
+        p_due_ids: dueIds.length ? dueIds : null,
       });
       invalidateMoney(qc);
       nudgePush();
+      setConfirm(false);
       setStep('done');
     } catch (e2) {
+      setConfirm(false);
       setErr(errorMessage(e2));
     } finally {
       setBusy(false);
@@ -176,6 +213,11 @@ export default function PayPage() {
       )}
 
       <Card className="p-4">
+        {purpose && (
+          <div className="mb-4">
+            <DuePicker dues={pendingQ.data?.pending} loading={pendingQ.isLoading} selected={dueIds} onChange={pickMonths} />
+          </div>
+        )}
         <Field
           label={t('Amount')}
           hint={
@@ -188,7 +230,7 @@ export default function PayPage() {
         >
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">₹</span>
-            <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular pl-8 text-xl font-bold" />
+            <AmountInput value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular pl-8 text-xl font-bold" />
           </div>
         </Field>
 
@@ -245,7 +287,7 @@ export default function PayPage() {
       <Card className={cn('mt-4 p-4', step === 'claim' && 'border-primary ring-2 ring-primary/25')}>
         <p className="text-lg font-bold">{t('Done? Enter the UTR / transaction ID')}</p>
         <p className="mb-4 text-[13px] text-muted-foreground">{t('Nothing is marked paid automatically — the admin verifies it first.')}</p>
-        <form onSubmit={submitClaim} className="space-y-4" noValidate>
+        <form onSubmit={reviewClaim} className="space-y-4" noValidate>
           <div className="grid grid-cols-2 gap-3">
             <Field label={t('Paid on')}>
               <Input type="date" value={paidOn} max={istToday()} onChange={(e) => setPaidOn(e.target.value)} />
@@ -262,7 +304,7 @@ export default function PayPage() {
             </Field>
           </div>
           <Field label={t('UTR / transaction ID')} optional={!referenceRequired(mode)} hint={t('12-digit UPI reference from your payment app')}>
-            <Input value={utr} onChange={(e) => setUtr(e.target.value.toUpperCase())} autoCapitalize="characters" autoCorrect="off" spellCheck={false} inputMode="text" />
+            <Input value={utr} onChange={(e) => setUtr(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 30))} autoCapitalize="characters" autoCorrect="off" spellCheck={false} inputMode="text" />
           </Field>
           <Field label={t('Screenshot')} optional>
             <FileInput value={shot} onChange={setShot} imagesOnly label={t('Add payment screenshot')} />
@@ -276,6 +318,24 @@ export default function PayPage() {
           </Button>
         </form>
       </Card>
+
+      <ConfirmSheet
+        open={confirm}
+        onOpenChange={setConfirm}
+        title={t('Submit this payment for verification?')}
+        description={t('Please check what you are paying for. The admin verifies it before it is added to your account.')}
+        rows={[
+          { label: t('Flat'), value: d.unit_code ?? '' },
+          { label: t('Amount'), value: formatINR(claimPaise ?? 0), strong: true },
+          { label: t('Paid on'), value: paidOn },
+          ...(utr ? [{ label: t('UTR / transaction ID'), value: normalizeUtr(utr) }] : []),
+        ]}
+        confirmLabel={t('Yes, submit')}
+        loading={busy}
+        onConfirm={() => void submitClaim()}
+      >
+        <PaymentBreakdown preview={preview.data && dClaim === claimPaise && !preview.isFetching ? preview.data : undefined} amountPaise={claimPaise ?? 0} />
+      </ConfirmSheet>
 
       <Dialog open={qrOpen} onOpenChange={setQrOpen}>
         <DialogContent>

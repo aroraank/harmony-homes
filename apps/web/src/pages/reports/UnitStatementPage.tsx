@@ -1,8 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Download, FileText, IndianRupee, Share2 } from 'lucide-react';
+import { Download, FileDown, FileText, IndianRupee, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate, formatINR } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
@@ -19,6 +20,7 @@ import { StatusChip } from '@/components/StatusChip';
 import { Money } from '@/components/Money';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { StatementDialog } from '@/components/StatementDialog';
 import type { UnitStatement, UnitStatus } from '@/types';
 
 export default function UnitStatementPage() {
@@ -33,6 +35,11 @@ export default function UnitStatementPage() {
     queryFn: () => rpc<UnitStatement>('unit_statement', { p_unit_id: unitId }),
   });
   const s = q.data;
+  const [stmtOpen, setStmtOpen] = useState(false);
+  // members only see their own flat; send them there
+  useEffect(() => {
+    if (!m.isAdmin && m.unit_id && unitId !== m.unit_id) nav(`/reports/unit/${m.unit_id}`, { replace: true });
+  }, [m.isAdmin, m.unit_id, unitId, nav]);
 
   const exportCsv = () => {
     if (!s) return;
@@ -83,7 +90,7 @@ export default function UnitStatementPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader title={t('Flat statement')} back="/reports" />
-      <UnitSelect units={units.data ?? []} value={unitId ?? ''} onChange={(e) => e.target.value && nav(`/reports/unit/${e.target.value}`, { replace: true })} aria-label={t('Flat')} />
+      {m.isAdmin && <UnitSelect units={units.data ?? []} value={unitId ?? ''} onChange={(e) => e.target.value && nav(`/reports/unit/${e.target.value}`, { replace: true })} aria-label={t('Flat')} />}
       {!unitId ? (
         <EmptyState title={t('Choose a flat to see its statement')} />
       ) : q.isLoading ? (
@@ -100,7 +107,11 @@ export default function UnitStatementPage() {
             <StatTile label={t('Advance held')} value={formatINR(s.totals.advance_paise + s.totals.event_advance_paise)} tone="good" />
             <StatTile label={t('Total paid')} value={formatINR(s.totals.paid_paise)} className="col-span-2" />
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <Button className="mt-3 w-full" variant="secondary" onClick={() => setStmtOpen(true)}>
+            <FileDown /> {t('Download statement (PDF) for a period')}
+          </Button>
+          <StatementDialog open={stmtOpen} onOpenChange={setStmtOpen} kind="flat" unitId={s.unit.id} />
+          <div className="mt-2 grid grid-cols-3 gap-2">
             <Button variant="outline" size="sm" onClick={exportPdf}>
               <FileText /> PDF
             </Button>

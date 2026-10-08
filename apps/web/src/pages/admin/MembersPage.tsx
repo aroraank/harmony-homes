@@ -1,10 +1,12 @@
+import { PhoneInput } from '@/components/PhoneInput';
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Check, KeyRound, LogOut, MoreVertical, Pencil, Printer, ShieldCheck, UserMinus, UserPlus, Users, X } from 'lucide-react';
+import { Check, Eye, KeyRound, LogOut, MoreVertical, Pencil, Printer, ShieldCheck, UserMinus, UserPlus, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime, MOBILE_RE, normalizeMobile } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
+import { startViewAs } from '@/lib/viewAs';
 import { errorMessage, invokeFn, rpc, supabase } from '@/lib/supabase';
 import { unwrap, useUnits } from '@/lib/queries';
 import { brand } from '@/brand';
@@ -39,6 +41,7 @@ export default function MembersPage() {
   const [confirmReset, setConfirmReset] = useState<Row | null>(null);
   const [approveFor, setApproveFor] = useState<Row | null>(null);
   const [staffOpen, setStaffOpen] = useState(false);
+  const [viewFor, setViewFor] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
 
   const q = useQuery({
@@ -53,6 +56,12 @@ export default function MembersPage() {
       ),
   });
 
+  const reqs = useQuery({
+    queryKey: ['pinRequests', m.societyId],
+    queryFn: async () =>
+      unwrap<{ user_id: string }[]>(await supabase.from('pin_reset_requests').select('user_id').eq('society_id', m.societyId).is('resolved_at', null)),
+  });
+  const asked = new Set((reqs.data ?? []).map((x) => x.user_id));
   const rows = q.data ?? [];
   const active = rows.filter((r) => r.status === 'active').sort((a, b) => (a.units?.code ?? 'ZZ' + a.role).localeCompare(b.units?.code ?? 'ZZ' + b.role));
   const pending = rows.filter((r) => r.status === 'pending');
@@ -62,7 +71,10 @@ export default function MembersPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const allSelected = needLogin.length > 0 && needLogin.every((u) => selected.includes(u.id));
 
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['members'] });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['members'] });
+    void qc.invalidateQueries({ queryKey: ['pinRequests'] });
+  };
 
   if (!m.can('manage_users')) return <EmptyState title={t('You do not have permission to do this.')} />;
 
@@ -118,6 +130,16 @@ export default function MembersPage() {
     }
   };
 
+  const openViewAs = async (row: Row) => {
+    setBusy(true);
+    try {
+      await startViewAs(m.societyId, row.id, m.fullName);
+    } catch (e) {
+      toast.error(errorMessage(e));
+      setBusy(false);
+    }
+  };
+
   const roleLabel = (r: Role) => (r === 'super_admin' ? t('Super admin') : r === 'admin' ? t('Admin') : t('Resident'));
 
   return (
@@ -153,10 +175,11 @@ export default function MembersPage() {
                   <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                     <span className="tabular w-16 shrink-0 font-bold">{r.units?.code ?? '—'}</span>
                     <div className="min-w-0 flex-1">
+                      {asked.has(r.user_id) && <Badge variant="warning">{t('Asked for a new PIN')}</Badge>}
                       <p className="truncate text-sm font-semibold">{r.profiles?.full_name}</p>
                       <p className="truncate text-[12px] text-muted-foreground">
                         {r.profiles?.phone ?? t('No mobile')}
-                        {r.profiles?.must_change_password && <span className="text-warning"> · {t('has not set a password yet')}</span>}
+                        {r.profiles?.must_change_password && <span className="text-warning"> · {t('has not set their own PIN yet')}</span>}
                       </p>
                     </div>
                     {r.role !== 'resident' && <Badge variant={r.role === 'super_admin' ? 'default' : 'info'}>{roleLabel(r.role)}</Badge>}
@@ -169,7 +192,7 @@ export default function MembersPage() {
                           <Pencil /> {t('Edit name & mobile')}
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => setConfirmReset(r)}>
-                          <KeyRound /> {t('Reset password')}
+                          <KeyRound /> {t('Reset PIN')}
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => void forceSignOut(r)}>
                           <LogOut /> {t('Sign out all devices')}
@@ -177,6 +200,11 @@ export default function MembersPage() {
                         <DropdownMenuItem onSelect={() => setRoleFor(r)}>
                           <ShieldCheck /> {t('Change role')}
                         </DropdownMenuItem>
+                        {m.isSuperAdmin && r.role !== 'super_admin' && r.user_id !== m.userId && (
+                          <DropdownMenuItem onSelect={() => setViewFor(r)}>
+                            <Eye /> {t('View as this member')}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem destructive onSelect={() => setDeact(r)}>
                           <UserMinus /> {t('Deactivate')}
@@ -192,7 +220,7 @@ export default function MembersPage() {
 
         <TabsContent value="logins">
           <Alert variant="info" className="mb-3">
-            {t('Each flat gets one login. Username = flat code. A unique temporary password is shown once on printable slips; members must set their own password at first sign-in.')}
+            {t('Each flat gets one login. Username = flat code. A unique 6-digit temporary PIN is shown once on printable slips; members must set their own PIN at first sign-in.')}
           </Alert>
           {needLogin.length === 0 ? (
             <EmptyState title={t('Every flat has a login')} />
@@ -275,12 +303,21 @@ export default function MembersPage() {
       <ConfirmSheet
         open={!!confirmReset}
         onOpenChange={(o) => !o && setConfirmReset(null)}
-        title={t('Reset password for {{u}}?', { u: confirmReset?.units?.code ?? confirmReset?.profiles?.full_name ?? '' })}
-        description={t('A new one-time password is created and all their devices are signed out. They must set a new password at next sign-in.')}
-        confirmLabel={t('Reset password')}
+        title={t('Reset PIN for {{u}}?', { u: confirmReset?.units?.code ?? confirmReset?.profiles?.full_name ?? '' })}
+        description={t('A new temporary PIN is created and all their devices are signed out. They must set their own PIN at next sign-in.')}
+        confirmLabel={t('Reset PIN')}
         destructive
         loading={busy}
         onConfirm={() => confirmReset && void reset(confirmReset)}
+      />
+      <ConfirmSheet
+        open={!!viewFor}
+        onOpenChange={(o) => !o && !busy && setViewFor(null)}
+        title={t('View as {{u}}?', { u: viewFor?.units?.code ?? viewFor?.profiles?.full_name ?? '' })}
+        description={t('You will see the app exactly as they see it, read only. Nothing can be changed. This is recorded in the audit log.')}
+        confirmLabel={t('View as this member')}
+        loading={busy}
+        onConfirm={() => viewFor && void openViewAs(viewFor)}
       />
     </div>
   );
@@ -301,7 +338,7 @@ small{color:#456}</style></head><body><div class="grid">${slips
       .map(
         (s) => `<div class="slip"><div class="b">${esc(brand.name)}</div><small>${esc(society)}</small>
 <p>Flat: <b>${esc(s.unit_code ?? '')}</b> ${esc(s.display_name ?? '')}</p><p>Society code: <b>${esc(slug)}</b><br>Username: <b>${esc(s.username)}</b></p>
-<p>Temporary password:<br><span class="pw">${esc(s.password)}</span></p><small>Open ${esc(url)} → sign in → set your own password. Do not share this slip.</small></div>`,
+<p>Temporary PIN:<br><span class="pw">${esc(s.password)}</span></p><small>Open ${esc(url)} → sign in → set your own PIN. Do not share this slip.</small></div>`,
       )
       .join('')}</div></body></html>`);
     w.document.close();
@@ -315,7 +352,7 @@ small{color:#456}</style></head><body><div class="grid">${slips
           <DialogTitle>{t('Credential slips')}</DialogTitle>
         </DialogHeader>
         <Alert variant="warning" className="mb-3">
-          {t('These passwords are shown only once and are never stored in readable form. Print or note them now and hand each slip over individually.')}
+          {t('These PINs are shown only once and are never stored in readable form. Print or note them now and hand each slip over individually.')}
         </Alert>
         <div className="grid max-h-[45dvh] gap-2 overflow-y-auto">
           {slips.map((s) => (
@@ -334,7 +371,7 @@ small{color:#456}</style></head><body><div class="grid">${slips
           <Printer /> {t('Print slips')}
         </Button>
         <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm">
-          <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} /> {t('I have saved or printed these passwords')}
+          <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} /> {t('I have saved or printed these PINs')}
         </label>
         <DialogFooter>
           <Button onClick={onClose} disabled={!ack}>
@@ -373,10 +410,10 @@ function EditMember({ row, onClose }: { row: Row; onClose: () => void }) {
         </DialogHeader>
         <div className="space-y-3">
           <Field label={t('Full name')}>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label={t('Mobile number')} optional>
-            <Input type="tel" inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <PhoneInput value={phone} onChange={(e) => setPhone(e.target.value)} />
           </Field>
         </div>
         <DialogFooter>
@@ -487,7 +524,7 @@ function ApproveDialog({ row, replace, onClose }: { row: Row; replace: boolean; 
       open
       onOpenChange={(o) => !o && onClose()}
       title={t('Approve {{n}} for {{u}}?', { n: row.profiles?.full_name ?? '', u: row.units?.code ?? '' })}
-      description={replace ? t('The current login of this flat will be deactivated and signed out.') : t('They will sign in with the flat code and the password they chose.')}
+      description={replace ? t('The current login of this flat will be deactivated and signed out.') : t('They will sign in with the flat code and the PIN they chose.')}
       rows={[
         { label: t('Mobile'), value: row.profiles?.phone ?? '' },
         { label: t('Requested'), value: formatDateTime(row.created_at) },
@@ -538,13 +575,13 @@ function StaffDialog({ canSuper, onClose, onSlip }: { canSuper: boolean; onClose
         </DialogHeader>
         <div className="space-y-3">
           <Field label={t('Username')} hint={t('Letters, digits, dashes — e.g. rohit-admin')}>
-            <Input value={username} onChange={(e) => setUsername(e.target.value.trim())} autoCapitalize="none" />
+            <Input value={username} maxLength={40} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} autoCapitalize="none" />
           </Field>
           <Field label={t('Full name')}>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label={t('Mobile number')} optional>
-            <Input type="tel" inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <PhoneInput value={phone} onChange={(e) => setPhone(e.target.value)} />
           </Field>
           <Field label={t('Role')}>
             <NativeSelect value={role} onChange={(e) => setRole(e.target.value as 'admin' | 'super_admin')}>

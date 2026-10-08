@@ -17,6 +17,7 @@ import { EmptyState } from '@/components/States';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AmountInput } from '@/components/AmountInput';
 import { Input, Textarea } from '@/components/ui/input';
 
 type Scope = 'all' | 'unit_types' | 'custom';
@@ -120,7 +121,7 @@ export default function EventCreatePage() {
         <Field label={t('Total estimated cost')} error={errors.total}>
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">₹</span>
-            <Input inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} className="tabular pl-8 text-xl font-bold" placeholder="240000" />
+            <AmountInput value={total} onChange={(e) => setTotal(e.target.value)} className="tabular pl-8 text-xl font-bold" placeholder="240000" />
           </div>
         </Field>
       </Card>
@@ -212,7 +213,7 @@ export default function EventCreatePage() {
           <Input type="date" value={dueDate} min={istToday()} onChange={(e) => setDueDate(e.target.value)} />
         </Field>
         <Field label={t('Round up to (₹)')} error={errors.rounding}>
-          <Input inputMode="numeric" value={rounding} onChange={(e) => setRounding(e.target.value)} />
+          <AmountInput value={rounding} onChange={(e) => setRounding(e.target.value)} />
         </Field>
       </Card>
 

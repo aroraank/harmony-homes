@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { CalendarCheck2, Download, FileText, IndianRupee, PlayCircle, Receipt, Trash2 } from 'lucide-react';
+import { CalendarCheck2, Download, FileText, IndianRupee, Pencil, PlayCircle, Receipt, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatDate, formatINR } from '@harmony/shared';
+import { formatDate, formatINR, parseRupeesToPaise, summariseEventSplit } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { invalidateMoney } from '@/lib/queries';
@@ -22,6 +22,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { UnitLink } from '@/components/UnitLink';
+import { AmountInput } from '@/components/AmountInput';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/Field';
 import type { EventReport } from '@/types';
@@ -37,6 +40,14 @@ export default function EventDetailPage() {
   const [settle, setSettle] = useState(true);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editTotal, setEditTotal] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [editExcluded, setEditExcluded] = useState<Record<string, string>>({});
+  const [editBusy, setEditBusy] = useState(false);
 
   if (q.isLoading) return <CardSkeleton className="h-96" />;
   if (!q.data) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
@@ -74,6 +85,46 @@ export default function EventDetailPage() {
       toast.error(errorMessage(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openEdit = () => {
+    setEditTitle(e.title);
+    setEditDesc(e.description ?? '');
+    setEditDueDate(e.due_date);
+    setEditTotal((r.target_paise / 100).toString());
+    setEditReason('');
+    setEditExcluded(Object.fromEntries(r.units.filter((u) => !u.expected).map((u) => [u.unit_id, u.exclusion_reason ?? ''])));
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    setEditBusy(true);
+    try {
+      if (e.status === 'draft') {
+        await rpc('edit_event_draft', { p_event_id: e.id, p_title: editTitle, p_description: editDesc, p_due_date: editDueDate });
+      } else {
+        const paise = parseRupeesToPaise(editTotal);
+        if (paise === null) throw new Error(t('Enter a valid amount'));
+        if (paise <= 0) throw new Error(t('Enter a valid amount'));
+        if (Object.values(editExcluded).some((x) => x.trim().length < 2)) throw new Error(t('Give a reason for every excluded flat.'));
+        if (editReason.trim().length < 3) throw new Error(t('Give a short reason — flats will see it'));
+        await rpc('update_event_target', {
+          p_event_id: e.id,
+          p_total_cost_paise: paise,
+          p_excluded: Object.entries(editExcluded).map(([unit_id, reason]) => ({ unit_id, reason: reason.trim() })),
+          p_reason: editReason.trim(),
+        });
+      }
+      toast.success(t('Event updated'));
+      invalidateMoney(qc);
+      void qc.invalidateQueries({ queryKey: ['eventReport', id] });
+      nudgePush();
+      setEditOpen(false);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -158,10 +209,18 @@ export default function EventDetailPage() {
               <Button onClick={() => setAction('open')}>
                 <PlayCircle /> {t('Open event')}
               </Button>
-              <Button variant="outline" onClick={() => setAction('delete')}>
+              <Button variant="outline" onClick={openEdit}>
+                <Pencil /> {t('Edit')}
+              </Button>
+              <Button variant="outline" className="col-span-2" onClick={() => setAction('delete')}>
                 <Trash2 /> {t('Delete draft')}
               </Button>
             </>
+          )}
+          {e.status === 'open' && (
+            <Button variant="outline" onClick={openEdit}>
+              <Pencil /> {t('Edit amount / flats')}
+            </Button>
           )}
           {e.status !== 'draft' && e.fund_id && (
             <>
@@ -205,9 +264,9 @@ export default function EventDetailPage() {
       </SectionTitle>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {r.units.map((u) => (
-          <Link
+          <UnitLink
             key={u.unit_id}
-            to={`/reports/unit/${u.unit_id}`}
+            unitId={u.unit_id}
             className={cn('rounded-2xl border bg-card p-3 shadow-card transition-colors hover:bg-secondary/50', !u.expected && 'opacity-60')}
           >
             <div className="flex items-center justify-between">
@@ -220,7 +279,7 @@ export default function EventDetailPage() {
               {u.expected ? `${formatINR(u.paid_paise)} / ${formatINR(u.due_paise)}` : u.exclusion_reason}
             </p>
             {u.extra_paise > 0 && <p className="tabular text-[11.5px] font-semibold text-credit">+{formatINR(u.extra_paise)} {t('extra')}</p>}
-          </Link>
+          </UnitLink>
         ))}
       </div>
 
@@ -289,6 +348,84 @@ export default function EventDetailPage() {
           <p className="mt-2 text-[12.5px] text-muted-foreground">
             {t('{{a}} is still pending from flats. Their dues stay open after closing.', { a: formatINR(r.remaining_to_collect_paise) })}
           </p>
+        )}
+      </ConfirmSheet>
+      <ConfirmSheet
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        title={e.status === 'draft' ? t('Edit draft event') : t('Edit target amount')}
+        description={
+          e.status === 'draft'
+            ? t('Nothing has been billed yet, so you can change anything.')
+            : t('The amount is re-split across the paying flats. Every flat must read and accept the change before using the app. This only works while no flat has paid yet.')
+        }
+        confirmLabel={t('Save changes')}
+        loading={editBusy}
+        onConfirm={saveEdit}
+      >
+        {e.status === 'draft' ? (
+          <>
+            <Field label={t('Title')} className="mt-1">
+              <Input value={editTitle} onChange={(ev) => setEditTitle(ev.target.value)} maxLength={120} />
+            </Field>
+            <Field label={t('Description')} optional className="mt-3">
+              <Input value={editDesc} onChange={(ev) => setEditDesc(ev.target.value)} maxLength={2000} />
+            </Field>
+            <Field label={t('Due date')} className="mt-3">
+              <Input type="date" value={editDueDate} onChange={(ev) => setEditDueDate(ev.target.value)} />
+            </Field>
+          </>
+        ) : (
+          <>
+            <Field label={t('New total target')} className="mt-1">
+              <AmountInput value={editTotal} onChange={(ev) => setEditTotal(ev.target.value)} />
+            </Field>
+            {(() => {
+              const sp = summariseEventSplit(parseRupeesToPaise(editTotal) ?? 0, r.units.length, Object.keys(editExcluded).length, e.rounding_paise);
+              return (
+                <p className="tabular mt-2 rounded-xl bg-primary/10 px-3 py-2 text-[13px] font-semibold text-primary">
+                  {t('{{s}} in scope, {{e}} expected → {{a}} per flat', { s: sp.inScope, e: sp.expected, a: formatINR(sp.sharePaise) })}
+                </p>
+              );
+            })()}
+            <p className="mt-3 text-[13px] font-semibold">{t('Who pays? Untick a flat to exclude it')}</p>
+            <div className="mt-1.5 max-h-56 divide-y overflow-y-auto rounded-xl border">
+              {r.units.map((u) => {
+                const out = u.unit_id in editExcluded;
+                return (
+                  <div key={u.unit_id} className="px-3 py-2">
+                    <label className="flex min-h-9 cursor-pointer items-center gap-3">
+                      <Checkbox
+                        checked={!out}
+                        onCheckedChange={() =>
+                          setEditExcluded((ex) => {
+                            const n = { ...ex };
+                            if (out) delete n[u.unit_id];
+                            else n[u.unit_id] = '';
+                            return n;
+                          })
+                        }
+                      />
+                      <span className="tabular w-16 text-sm font-bold">{u.unit_code}</span>
+                      <span className="truncate text-[12.5px] text-muted-foreground">{u.unit_name}</span>
+                    </label>
+                    {out && (
+                      <Input
+                        className="mt-1.5 h-9 text-sm"
+                        placeholder={t('Reason, e.g. owner abroad')}
+                        value={editExcluded[u.unit_id]}
+                        onChange={(ev) => setEditExcluded((ex) => ({ ...ex, [u.unit_id]: ev.target.value }))}
+                        maxLength={200}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <Field label={t('Reason (members will see this)')} className="mt-3">
+              <Input value={editReason} onChange={(ev) => setEditReason(ev.target.value)} maxLength={300} placeholder={t('e.g. Quote came in lower than expected')} />
+            </Field>
+          </>
         )}
       </ConfirmSheet>
     </div>

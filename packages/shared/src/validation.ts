@@ -91,15 +91,19 @@ export function referenceRequired(mode: PaymentMode | string): boolean {
   return !['cash', 'cheque', 'other'].includes(mode);
 }
 
-/** Password rules for the first-login change and voluntary changes */
-export function passwordProblems(pw: string, username: string, current?: string): string[] {
+/** PIN rules: numbers only, 6 to 12 digits. (A PIN is the sign-in secret; the name "password" is kept internally.) */
+export const PIN_RE = /^\d{6,12}$/;
+export function pinProblems(pin: string, current?: string): string[] {
   const out: string[] = [];
-  if (pw.length < 8) out.push('At least 8 characters');
-  if (pw.length > 72) out.push('At most 72 characters');
-  if (username && pw.toLowerCase() === username.toLowerCase()) out.push('Must not be your username');
-  if (current && pw === current) out.push('Must be different from the current / temporary password');
-  if (/^\s|\s$/.test(pw)) out.push('Must not start or end with a space');
+  if (!/^\d*$/.test(pin)) out.push('Numbers only');
+  if (pin.length < 6) out.push('At least 6 digits');
+  if (pin.length > 12) out.push('At most 12 digits');
+  if (current && pin === current) out.push('Must be different from the current / temporary PIN');
   return out;
+}
+/** Kept for existing callers: the username is no longer part of the rules. */
+export function passwordProblems(pw: string, _username?: string, current?: string): string[] {
+  return pinProblems(pw, current);
 }
 
 export const unitCodeSchema = z
@@ -117,5 +121,5 @@ export const registrationSchema = z.object({
   mobile: mobileSchema,
   unitTypeId: z.string().uuid('Choose your flat type'),
   unitId: z.string().uuid('Choose your flat'),
-  password: z.string().min(8, 'At least 8 characters').max(72),
+  password: z.string().regex(PIN_RE, 'PIN must be 6 to 12 digits'),
 });

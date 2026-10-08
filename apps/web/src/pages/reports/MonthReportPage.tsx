@@ -15,6 +15,7 @@ import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { MonthChips } from '@/components/MonthChips';
 import { CardSkeleton, ErrorState } from '@/components/States';
 import { StatusChip } from '@/components/StatusChip';
+import { UnitLink } from '@/components/UnitLink';
 import { Money } from '@/components/Money';
 import { ConfirmSheet } from '@/components/ConfirmSheet';
 import { Field } from '@/components/Field';
@@ -70,7 +71,7 @@ export default function MonthReportPage() {
     }
   };
 
-  const pendingUnits = (r?.units ?? []).filter((u) => u.status === 'pending' || u.status === 'partial');
+  const pendingUnits = (r?.units ?? []).filter((u) => u.status === 'pending' || u.status === 'partial').sort((a, b) => b.pending_paise - a.pending_paise);
   const paidUnits = (r?.units ?? []).filter((u) => u.status === 'paid' || u.status === 'advance');
 
   const sharePending = () => {
@@ -171,11 +172,18 @@ export default function MonthReportPage() {
               <Line label={t('Closing balance')} value={r.closing_paise} strong />
             </dl>
             {r.shortfall_paise > 0 && (
-              <p className="border-t bg-amber-50 px-4 py-3 text-[13.5px] font-semibold text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
-                {r.opening_paise >= r.shortfall_paise
-                  ? t('Shortfall of {{a}} covered from previous balance.', { a: formatINR(r.shortfall_paise) })
-                  : t('Shortfall of {{a}} — more than the previous balance, so the fund went negative.', { a: formatINR(r.shortfall_paise) })}
-              </p>
+              <div className="border-t bg-amber-50 px-4 py-3 text-[13.5px] font-semibold text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
+                <p>
+                  {r.opening_paise >= r.shortfall_paise
+                    ? t('Shortfall of {{a}} covered from previous balance.', { a: formatINR(r.shortfall_paise) })
+                    : t('Shortfall of {{a}} — more than the previous balance, so the fund went negative.', { a: formatINR(r.shortfall_paise) })}
+                </p>
+                {pendingUnits.length > 0 && (
+                  <a href="#flats" className="mt-1 inline-block underline underline-offset-2">
+                    {t('See who still owes, highest first →')}
+                  </a>
+                )}
+              </div>
             )}
             {r.expected_paise > 0 && (
               <p className="border-t px-4 py-2.5 text-[12.5px] text-muted-foreground">
@@ -221,8 +229,9 @@ export default function MonthReportPage() {
           )}
 
           {r.units.length > 0 && (
-            <>
+            <div id="flats">
               <SectionTitle>{t('Flats')}</SectionTitle>
+              <p className="-mt-1 mb-2 px-1 text-[12px] text-muted-foreground">{t('Unpaid flats are listed highest amount owed first.')}</p>
               <Tabs defaultValue="pending">
                 <TabsList>
                   <TabsTrigger value="pending">
@@ -247,18 +256,18 @@ export default function MonthReportPage() {
                   ) : (
                     <Card className="divide-y">
                       {r.extra_payers.map((x) => (
-                        <Link key={x.unit_id} to={`/reports/unit/${x.unit_id}`} className="flex items-center justify-between px-4 py-3 hover:bg-secondary/50">
+                        <UnitLink key={x.unit_id} unitId={x.unit_id} className="flex items-center justify-between px-4 py-3 hover:bg-secondary/50">
                           <span className="tabular font-semibold">{x.unit_code}</span>
                           <span className="text-sm">
                             {t('paid extra')} <Money paise={x.extra_paise} className="font-bold text-credit" />
                           </span>
-                        </Link>
+                        </UnitLink>
                       ))}
                     </Card>
                   )}
                 </TabsContent>
               </Tabs>
-            </>
+            </div>
           )}
 
           {r.payments.length > 0 && (
@@ -340,7 +349,7 @@ function UnitGrid({ units, show }: { units: MonthReport['units']; show: 'pending
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {units.map((u) => (
-        <Link key={u.unit_id} to={`/reports/unit/${u.unit_id}`} className="rounded-2xl border bg-card p-3 shadow-card hover:bg-secondary/50">
+        <UnitLink key={u.unit_id} unitId={u.unit_id} className="rounded-2xl border bg-card p-3 shadow-card hover:bg-secondary/50">
           <div className="flex flex-wrap items-center justify-between gap-1.5">
             <span className="tabular whitespace-nowrap font-bold">{u.unit_code}</span>
             <StatusChip status={u.status} />
@@ -357,7 +366,7 @@ function UnitGrid({ units, show }: { units: MonthReport['units']; show: 'pending
               </>
             )}
           </p>
-        </Link>
+        </UnitLink>
       ))}
     </div>
   );

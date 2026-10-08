@@ -7,6 +7,7 @@ import type {
   EventRow,
   ExpenseCategory,
   Fund,
+  Meeting,
   PayInfo,
   Settings,
   Unit,
@@ -95,6 +96,37 @@ export function useEvents(societyId: string) {
     queryKey: ['events', societyId],
     queryFn: async () =>
       unwrap<EventRow[]>(await supabase.from('events').select('*').eq('society_id', societyId).order('created_at', { ascending: false })),
+  });
+}
+
+export function useMeetings(societyId: string) {
+  return useQuery({
+    queryKey: ['meetings', societyId],
+    queryFn: async () =>
+      unwrap<Meeting[]>(
+        await supabase.from('v_meetings').select('*').eq('society_id', societyId).order('meeting_date', { ascending: false }).order('start_time', { ascending: false }),
+      ),
+  });
+}
+
+export function useNextMeeting(societyId: string) {
+  return useQuery({
+    queryKey: ['nextMeeting', societyId],
+    queryFn: async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = unwrap<Meeting[]>(
+        await supabase
+          .from('v_meetings')
+          .select('*')
+          .eq('society_id', societyId)
+          .eq('status', 'published')
+          .gte('meeting_date', today)
+          .order('meeting_date', { ascending: true })
+          .order('start_time', { ascending: true })
+          .limit(1),
+      );
+      return rows[0] ?? null;
+    },
   });
 }
 

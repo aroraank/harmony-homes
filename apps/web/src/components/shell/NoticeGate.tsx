@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Megaphone, ShieldCheck } from 'lucide-react';
+import { ArrowDown, MapPin, Megaphone, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
@@ -35,6 +35,9 @@ export function NoticeGate() {
   const qc = useQueryClient();
   const online = useOnline();
   const [busy, setBusy] = useState(false);
+  // The member must scroll to the end of the notice before OK is enabled.
+  const [readTo, setReadTo] = useState<string | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
 
   const q = useQuery({
     queryKey: ['pendingAcks', m.societyId, m.userId],
@@ -63,8 +66,33 @@ export function NoticeGate() {
     void rpc('mark_notices_delivered', { p_society: m.societyId }).catch(() => undefined);
   }, [m.societyId]);
 
+  const checkEnd = useCallback(() => {
+    const el = boxRef.current;
+    if (!el || !current) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) setReadTo(current.notice_id);
+  }, [current]);
+
+  // short notices that fit without scrolling count as read; re-check when content/images load
+  const roRef = useRef<ResizeObserver | null>(null);
+  const setBox = useCallback(
+    (el: HTMLDivElement | null) => {
+      boxRef.current = el;
+      roRef.current?.disconnect();
+      roRef.current = null;
+      if (!el) return;
+      const ro = new ResizeObserver(() => checkEnd());
+      ro.observe(el);
+      if (el.firstElementChild) ro.observe(el.firstElementChild);
+      roRef.current = ro;
+      requestAnimationFrame(() => checkEnd());
+    },
+    [checkEnd],
+  );
+  useEffect(() => () => roRef.current?.disconnect(), []);
+
   if (!current) return null;
   const n = current.notices;
+  const readAll = readTo === current.notice_id;
 
   const acknowledge = async () => {
     setBusy(true);
@@ -104,17 +132,32 @@ export function NoticeGate() {
         <DialogDescription id="notice-gate-desc" className="sr-only">
           {t('You must acknowledge this notice to continue.')}
         </DialogDescription>
-        <RichText text={n.body} className="mt-3 text-[15px]" />
-        {n.attachment_path && (
-          <div className="mt-3">
-            <AttachmentButton path={n.attachment_path} />
+        <div
+          ref={setBox}
+          onScroll={checkEnd}
+          tabIndex={0}
+          aria-label={t('Notice text')}
+          className="mt-3 max-h-[45vh] overflow-y-auto rounded-xl border bg-muted/20 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div>
+            <RichText text={n.body} className="text-[15px]" />
+            {n.attachment_path && (
+              <div className="mt-3">
+                <AttachmentButton path={n.attachment_path} />
+              </div>
+            )}
           </div>
+        </div>
+        {!readAll && (
+          <p className="mt-2 flex items-center justify-center gap-1.5 text-[12.5px] font-semibold text-warning" role="status">
+            <ArrowDown className="size-4 animate-bounce" /> {t('Scroll to the end to continue')}
+          </p>
         )}
         <p className="mt-5 flex items-start gap-2 rounded-xl bg-muted/60 p-3 text-[12.5px] text-muted-foreground">
           <MapPin className="mt-0.5 size-4 shrink-0" />
           {t('When you tap OK, your phone may ask to share your location once. It is optional and only records where this notice was acknowledged.')}
         </p>
-        <Button className="mt-4 w-full" size="xl" onClick={acknowledge} loading={busy} disabled={!online}>
+        <Button className="mt-4 w-full" size="xl" onClick={acknowledge} loading={busy} disabled={!online || !readAll}>
           <ShieldCheck /> {t('I have read this — OK')}
         </Button>
         {(q.data?.length ?? 0) > 1 && (

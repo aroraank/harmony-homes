@@ -1,3 +1,4 @@
+import { IntInput } from '@/components/IntInput';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AmountInput } from '@/components/AmountInput';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -217,7 +219,7 @@ export default function RemindersPage() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('Repeat every')}>
-                <Input type="number" min={1} max={365} value={draft.interval_count ?? 6} onChange={(e) => setDraft((d) => ({ ...d, interval_count: Number(e.target.value) }))} />
+                <IntInput max={365} value={String(draft.interval_count ?? 6)} onChange={(e) => setDraft((d) => ({ ...d, interval_count: Number(e.target.value) }))} />
               </Field>
               <Field label={t('Unit')}>
                 <NativeSelect value={draft.interval_unit ?? 'months'} onChange={(e) => setDraft((d) => ({ ...d, interval_unit: e.target.value as 'days' | 'months' }))}>
@@ -227,7 +229,7 @@ export default function RemindersPage() {
               </Field>
             </div>
             <Field label={t('Next date')}>
-              <Input type="date" value={draft.next_date ?? ''} onChange={(e) => setDraft((d) => ({ ...d, next_date: e.target.value }))} />
+              <Input type="date" min={istToday()} value={draft.next_date ?? ''} onChange={(e) => setDraft((d) => ({ ...d, next_date: e.target.value }))} />
             </Field>
             <Field label={t('Audience')}>
               <NativeSelect value={draft.audience_type ?? 'all'} onChange={(e) => setDraft((d) => ({ ...d, audience_type: e.target.value as ReminderSchedule['audience_type'] }))}>
@@ -347,7 +349,7 @@ function TaskDoneSheet({ schedule, onClose }: { schedule: ReminderSchedule; onCl
             <Input type="date" value={doneOn} max={istToday()} onChange={(e) => setDoneOn(e.target.value)} />
           </Field>
           <Field label={t('Cost')} optional>
-            <Input inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="₹" />
+            <AmountInput value={cost} onChange={(e) => setCost(e.target.value)} placeholder="₹" />
           </Field>
           <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3">
             <span className="text-sm font-semibold">{t('Also record this as an expense')}</span>

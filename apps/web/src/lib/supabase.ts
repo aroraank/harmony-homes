@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { isViewingAs, READ_ONLY_RPCS, SILENT_SKIP_RPCS } from './viewAsState';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -42,7 +43,13 @@ function friendly(message: string | undefined): string {
 }
 
 /** Call a Postgres RPC and throw a friendly AppError on failure. */
+export const VIEW_ONLY_MESSAGE = 'View only: you are viewing as another member. Switch back to your own account to make changes.';
+
 export async function rpc<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
+  if (isViewingAs() && !READ_ONLY_RPCS.has(fn)) {
+    if (SILENT_SKIP_RPCS.has(fn)) return undefined as T;
+    throw new AppError(VIEW_ONLY_MESSAGE, '42501');
+  }
   const { data, error } = await supabase.rpc(fn, args ?? {});
   if (error) {
     const e = new AppError(error.message.startsWith('DUPLICATE_REFERENCE') ? error.message : friendly(error.message), error.code);
@@ -53,6 +60,7 @@ export async function rpc<T>(fn: string, args?: Record<string, unknown>): Promis
 
 /** Call an Edge Function; surfaces the function's JSON { error } message. */
 export async function invokeFn<T>(name: string, body: Record<string, unknown>): Promise<T> {
+  if (isViewingAs()) throw new AppError(VIEW_ONLY_MESSAGE, '42501');
   const { data, error } = await supabase.functions.invoke(name, { body });
   if (error) {
     let message = error.message;

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, Filter, ReceiptText, RotateCcw, Search, Undo2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, FileDown, Filter, ReceiptText, RotateCcw, Search, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { addMonths, currentPeriod, formatDate, formatDateTime, formatINR, periodEnd, periodLabel, periodStart } from '@/lib/format';
 import { useMember } from '@/lib/auth';
@@ -17,6 +17,7 @@ import { Money } from '@/components/Money';
 import { AttachmentButton } from '@/components/AttachmentButton';
 import { Field } from '@/components/Field';
 import { ConfirmSheet } from '@/components/ConfirmSheet';
+import { StatementDialog } from '@/components/StatementDialog';
 import { Button } from '@/components/ui/button';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,7 @@ export default function LedgerPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [selected, setSelected] = useState<LedgerRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [stmtOpen, setStmtOpen] = useState(false);
 
   const periods = useMemo(() => Array.from({ length: 18 }, (_, i) => addMonths(currentPeriod(), -i)), []);
 
@@ -102,11 +104,16 @@ export default function LedgerPage() {
         title={t('Ledger')}
         subtitle={t('Every rupee in and out — entries are never edited or deleted')}
         actions={
-          m.isAdmin && (
-            <Button variant="outline" size="icon" onClick={exportCsv} loading={exporting} aria-label={t('Export CSV')}>
-              {!exporting && <Download />}
+          <div className="flex gap-2">
+            <Button variant="outline" size="icon" onClick={() => setStmtOpen(true)} aria-label={t('Download PDF statement')}>
+              <FileDown />
             </Button>
-          )
+            {m.isAdmin && (
+              <Button variant="outline" size="icon" onClick={exportCsv} loading={exporting} aria-label={t('Export CSV')}>
+                {!exporting && <Download />}
+              </Button>
+            )}
+          </div>
         }
       />
       <div className="mb-3 flex gap-2">
@@ -176,6 +183,7 @@ export default function LedgerPage() {
       )}
 
       <EntrySheet entry={selected} onClose={() => setSelected(null)} cats={cats.data} />
+      <StatementDialog open={stmtOpen} onOpenChange={setStmtOpen} kind="ledger" fundId={fund || undefined} />
     </div>
   );
 }

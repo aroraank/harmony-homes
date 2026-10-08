@@ -21,6 +21,9 @@ const LedgerPage = lazy(() => import('./pages/ledger/LedgerPage'));
 const EventsPage = lazy(() => import('./pages/events/EventsPage'));
 const EventDetailPage = lazy(() => import('./pages/events/EventDetailPage'));
 const EventCreatePage = lazy(() => import('./pages/events/EventCreatePage'));
+const MeetingsPage = lazy(() => import('./pages/meetings/MeetingsPage'));
+const MeetingDetailPage = lazy(() => import('./pages/meetings/MeetingDetailPage'));
+const MeetingComposePage = lazy(() => import('./pages/meetings/MeetingComposePage'));
 const NoticesPage = lazy(() => import('./pages/notices/NoticesPage'));
 const NoticeDetailPage = lazy(() => import('./pages/notices/NoticeDetailPage'));
 const NoticeComposePage = lazy(() => import('./pages/notices/NoticeComposePage'));
@@ -102,6 +105,10 @@ export default function App() {
         <Route path="events" element={<EventsPage />} />
         <Route path="events/new" element={<EventCreatePage />} />
         <Route path="events/:id" element={<EventDetailPage />} />
+        <Route path="meetings" element={<MeetingsPage />} />
+        <Route path="meetings/new" element={<MeetingComposePage />} />
+        <Route path="meetings/:id" element={<MeetingDetailPage />} />
+        <Route path="meetings/:id/edit" element={<MeetingComposePage />} />
         <Route path="notices" element={<NoticesPage />} />
         <Route path="notices/new" element={<NoticeComposePage />} />
         <Route path="notices/:id" element={<NoticeDetailPage />} />

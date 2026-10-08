@@ -1,3 +1,4 @@
+import { IntInput } from '@/components/IntInput';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +17,7 @@ import { FileInput } from '@/components/FileInput';
 import { ConfirmSheet } from '@/components/ConfirmSheet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { AmountInput } from '@/components/AmountInput';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Alert } from '@/components/ui/alert';
@@ -39,8 +41,9 @@ const PERM_LABELS: Record<Permission, string> = {
   manage_reminders: 'Manage maintenance reminders',
   manage_concerns: 'Handle member concerns',
   record_adjustment: 'Record opening balance and adjustments',
+  manage_meetings: 'Call meetings and manage agendas',
 };
-const ADMIN_DEFAULTS: Permission[] = ['record_payment', 'record_expense', 'approve_claims', 'reverse_entry', 'manage_events', 'generate_dues', 'close_month', 'send_notices', 'manage_contacts', 'manage_reminders', 'manage_concerns'];
+const ADMIN_DEFAULTS: Permission[] = ['record_payment', 'record_expense', 'approve_claims', 'reverse_entry', 'manage_events', 'generate_dues', 'close_month', 'send_notices', 'manage_contacts', 'manage_reminders', 'manage_concerns', 'manage_meetings'];
 
 export default function SettingsPage() {
   const { t } = useTranslation();
@@ -254,16 +257,16 @@ export default function SettingsPage() {
       <Card className="space-y-3 p-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('Monthly amount (₹)')}>
-            <Input inputMode="decimal" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+            <AmountInput value={monthly} onChange={(e) => setMonthly(e.target.value)} />
           </Field>
           <Field label={t('Due day')}>
-            <Input type="number" min={1} max={28} value={dueDay} onChange={(e) => setDueDay(e.target.value)} />
+            <IntInput max={28} value={dueDay} onChange={(e) => setDueDay(e.target.value)} />
           </Field>
           <Field label={t('Start month')}>
             <Input type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)} />
           </Field>
           <Field label={t('Event rounding (₹)')}>
-            <Input inputMode="numeric" value={rounding} onChange={(e) => setRounding(e.target.value)} />
+            <AmountInput value={rounding} onChange={(e) => setRounding(e.target.value)} />
           </Field>
           <Field label={t('Receipt prefix')}>
             <Input value={prefix} onChange={(e) => setPrefix(e.target.value.toUpperCase())} maxLength={6} />
@@ -286,7 +289,7 @@ export default function SettingsPage() {
           {t('Changing these redirects everyone’s payments. Every change is audited and the super admin is alerted immediately.')}
         </Alert>
         <Field label={t('Society UPI ID')} error={!upiValid ? t('Enter a valid UPI ID, e.g. society@okhdfcbank') : undefined}>
-          <Input value={upi} onChange={(e) => setUpi(e.target.value)} autoCapitalize="none" placeholder="society@okhdfcbank" />
+          <Input value={upi} maxLength={255} onChange={(e) => setUpi(e.target.value.replace(/\s/g, ''))} autoCapitalize="none" placeholder="society@okhdfcbank" />
         </Field>
         <Field label={t('Payee name')}>
           <Input value={payee} onChange={(e) => setPayee(e.target.value)} maxLength={80} />
@@ -334,7 +337,7 @@ export default function SettingsPage() {
             <p className="text-[13px] text-muted-foreground">{t('Record the bank balance on the day you start using Harmony Homes, so the app balance matches the bank. Only one opening balance per fund.')}</p>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('Amount (₹)')}>
-                <Input inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value)} />
+                <AmountInput value={opening} onChange={(e) => setOpening(e.target.value)} />
               </Field>
               <Field label={t('As on')}>
                 <Input type="date" value={openingDate} max={istToday()} onChange={(e) => setOpeningDate(e.target.value)} />
@@ -351,7 +354,7 @@ export default function SettingsPage() {
       <Card className="space-y-3 p-4">
         <Field label={t('Keep acknowledgement locations for (days)')}>
           <div className="flex gap-2">
-            <Input type="number" min={1} max={3650} value={retention} onChange={(e) => setRetention(e.target.value)} />
+            <IntInput max={3650} value={retention} onChange={(e) => setRetention(e.target.value)} />
             <Button variant="outline" onClick={() => patch('retention', { location_retention_days: Number(retention) })} loading={busy === 'retention'}>
               {t('Save')}
             </Button>

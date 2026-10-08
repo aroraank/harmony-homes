@@ -17,13 +17,14 @@ import { Money } from '@/components/Money';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { AmountInput } from '@/components/AmountInput';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Claim } from '@/types';
 
-type ClaimRow = Claim & { units: { code: string } | null; funds: { name: string } | null; profiles: { full_name: string } | null };
+type ClaimRow = Claim & { units: { code: string } | null; funds: { name: string } | null; profiles: { full_name: string } | null; due_labels?: string[] };
 
 export default function ClaimsPage() {
   const { t } = useTranslation();
@@ -37,7 +38,14 @@ export default function ClaimsPage() {
         .select('*, units(code), funds(name), profiles!payment_claims_submitted_by_fkey(full_name)')
         .eq('society_id', m.societyId);
       qb = tab === 'pending' ? qb.eq('status', 'pending').order('created_at') : qb.neq('status', 'pending').order('reviewed_at', { ascending: false }).limit(50);
-      return unwrap<ClaimRow[]>(await qb);
+      const rows = unwrap<ClaimRow[]>(await qb);
+      // months the member said this payment is for
+      const ids = [...new Set(rows.flatMap((r) => (r as { due_ids?: string[] | null }).due_ids ?? []))];
+      if (ids.length) {
+        const labels = new Map((unwrap<{ id: string; label: string }[]>(await supabase.from('v_dues').select('id, label').in('id', ids))).map((x) => [x.id, x.label]));
+        for (const r of rows) r.due_labels = ((r as { due_ids?: string[] | null }).due_ids ?? []).map((i) => labels.get(i) ?? '').filter(Boolean);
+      }
+      return rows;
     },
   });
   const [approve, setApprove] = useState<ClaimRow | null>(null);
@@ -71,6 +79,9 @@ export default function ClaimsPage() {
                         <p className="text-[12.5px] text-muted-foreground">
                           {c.funds?.name} · {formatDate(c.paid_on)} · {MODE_LABELS[c.payment_mode] ?? c.payment_mode}
                         </p>
+                        {c.due_labels && c.due_labels.length > 0 && (
+                          <p className="mt-1 text-[13px] font-semibold text-primary">{t('For')}: {c.due_labels.join(', ')}</p>
+                        )}
                         {c.reference_no && (
                           <p className="tabular mt-1 select-all text-sm font-bold tracking-wide">
                             UTR {c.reference_no}
@@ -154,7 +165,7 @@ function ApproveSheet({ claim, onClose }: { claim: ClaimRow; onClose: () => void
         </DialogHeader>
         <div className="space-y-3">
           <Field label={t('Verified amount')} hint={paise !== claim.amount_paise ? t('Member claimed {{a}}', { a: formatINR(claim.amount_paise) }) : undefined}>
-            <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular text-lg font-bold" />
+            <AmountInput value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular text-lg font-bold" />
           </Field>
           <Field label={t('Fund')}>
             <NativeSelect value={fundId} onChange={(e) => setFundId(e.target.value)}>

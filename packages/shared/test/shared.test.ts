@@ -8,6 +8,7 @@ import {
   formatINR,
   fyOf,
   generateTempPassword,
+  generateTempPin,
   mobileSchema,
   normalizeMobile,
   parseRichText,
@@ -149,13 +150,24 @@ describe('validation', () => {
     expect(upiIdSchema.safeParse('nope').success).toBe(false);
   });
 
-  it('password rules', () => {
-    expect(passwordProblems('short', 'P1-GF')).toContain('At least 8 characters');
-    expect(passwordProblems('p1-gf', 'P1-GF').length).toBeGreaterThan(0);
-    expect(passwordProblems('TempPass123', 'P1-GF', 'TempPass123')).toContain(
-      'Must be different from the current / temporary password',
-    );
-    expect(passwordProblems('my-new-pass', 'P1-GF', 'TempPass123')).toEqual([]);
+  it('PIN rules', () => {
+    expect(passwordProblems('12345', 'P1-GF')).toContain('At least 6 digits');
+    expect(passwordProblems('12a456', 'P1-GF')).toContain('Numbers only');
+    expect(passwordProblems('1234567890123', 'P1-GF')).toContain('At most 12 digits');
+    expect(passwordProblems('482913', 'P1-GF', '482913')).toContain('Must be different from the current / temporary PIN');
+    expect(passwordProblems('482913', 'P1-GF', '115577')).toEqual([]);
+    expect(passwordProblems('000000')).toEqual([]);
+  });
+
+  it('temporary PINs are 6 random digits', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const p = generateTempPin();
+      expect(p).toMatch(/^\d{6}$/);
+      seen.add(p);
+    }
+    expect(seen.size).toBeGreaterThan(150);
+    expect(() => generateTempPin(4)).toThrow();
   });
 
   it('maps usernames to synthetic emails', () => {

@@ -1,3 +1,5 @@
+import { SocietyPosition } from '@/components/SocietyPosition';
+import { SurplusBoard } from '@/components/SurplusBoard';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -21,7 +23,7 @@ import {
 import { toast } from 'sonner';
 import { formatDate, formatINR, periodLabel } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
-import { useDashboard } from '@/lib/queries';
+import { useDashboard, useNextMeeting } from '@/lib/queries';
 import { enablePush, pushSupported } from '@/lib/push';
 import { useInstallPrompt } from '@/lib/install';
 import { getLocal, setLocal } from '@/lib/storage';
@@ -62,8 +64,11 @@ export default function HomePage() {
       <BalanceHero d={d} />
       {d.mine && <MyFlatCard d={d} />}
       {d.admin && <AdminAttention d={d} />}
+      <SocietyPosition />
+      <SurplusBoard />
       <MonthProgress d={d} />
       <ReminderCards compact />
+      <NextMeetingCard />
       <EnableExtras />
 
       {d.events.length > 0 && (
@@ -239,6 +244,39 @@ function AdminAttention({ d }: { d: Dashboard }) {
         ))}
       </Card>
     </section>
+  );
+}
+
+function timeLabel(t: string) {
+  const [h, m] = t.split(':').map(Number);
+  const hh = ((h + 11) % 12) + 1;
+  return `${hh}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+function NextMeetingCard() {
+  const { t } = useTranslation();
+  const m = useMember();
+  const q = useNextMeeting(m.societyId);
+  if (!q.data) return null;
+  const x = q.data;
+  return (
+    <Link to={`/meetings/${x.id}`} className="block">
+      <Card className="p-4 transition-colors hover:bg-secondary/40">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="size-4 text-primary" />
+          <p className="text-[12.5px] font-semibold text-primary">{t('Next meeting')}</p>
+        </div>
+        <p className="mt-1 font-bold">{x.title}</p>
+        <p className="text-[13px] text-muted-foreground">
+          {formatDate(x.meeting_date)} · {timeLabel(x.start_time)} · {x.audience_label}
+        </p>
+        {x.agenda.length > 0 && (
+          <p className="mt-2 truncate text-[12.5px] text-muted-foreground">
+            {t('Agenda')}: {x.agenda.map((a) => a.text).join(' · ')}
+          </p>
+        )}
+      </Card>
+    </Link>
   );
 }
 

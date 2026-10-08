@@ -20,6 +20,14 @@ export const brand = {
   logo: '/icons/logo.svg',
   icon192: '/icons/icon-192.png',
   supportNote: 'Questions? Raise a concern from the app — only the committee can see it.',
+  /** Society photo on the login screen (put the files in apps/web/public/). Missing files are simply hidden. */
+  loginImageWide: '/society-wide.webp', // 16:9, shown on laptops/tablets
+  loginImageTall: '/society-tall.webp', // 4:5, shown on phones
+  credit: {
+    name: 'Ankit Arora',
+    email: 'ankit.regalbit@gmail.com',
+    whatsapp: '919041238127', // country code + number, digits only
+  },
 } as const;
 
 export type Brand = typeof brand;

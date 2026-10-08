@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, IndianRupee, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-import { addDays, formatDate, formatINR, istToday, normalizeUtr, parseRupeesToPaise, referenceRequired, UTR_RE } from '@harmony/shared';
+import { addDays, formatDate, formatINR, istToday, normalizeUtr, paiseToInput, parseRupeesToPaise, referenceRequired, UTR_RE } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { AppError, errorMessage, newIdemKey, rpc } from '@/lib/supabase';
 import { invalidateMoney, useFunds, useUnits } from '@/lib/queries';
@@ -20,11 +20,14 @@ import { FileInput } from '@/components/FileInput';
 import { ConfirmSheet } from '@/components/ConfirmSheet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { AmountInput } from '@/components/AmountInput';
+import { DuePicker, sumRemaining, usePendingDues, type AllocPreview } from '@/components/DuePicker';
+import { PaymentBreakdown } from '@/components/PaymentBreakdown';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { EmptyState } from '@/components/States';
 
-type Preview = { allocations: { label: string; amount_paise: number; due_paise: number; already_paid_paise: number }[]; advance_paise: number; existing_advance_paise: number };
+type Preview = AllocPreview;
 type DupMatch = { source: 'ledger' | 'claim'; date: string; amount_paise: number; unit_code: string | null; payee?: string | null; status?: string };
 
 export default function RecordPaymentPage() {
@@ -40,6 +43,7 @@ export default function RecordPaymentPage() {
   const [unitId, setUnitId] = useState(params.get('unit') ?? '');
   const [fundId, setFundId] = useState(params.get('fund') ?? '');
   const [amount, setAmount] = useState(params.get('amount') ?? '');
+  const [dueIds, setDueIds] = useState<string[]>([]);
   const [date, setDate] = useState(istToday());
   const [mode, setMode] = useState('upi');
   const [utr, setUtr] = useState('');
@@ -59,13 +63,22 @@ export default function RecordPaymentPage() {
   const unit = units.data?.find((u) => u.id === unitId);
   const needsReason = date < addDays(istToday(), -30);
 
+  const pendingQ = usePendingDues(unitId, fund?.id);
   const dAmount = useDebounced(paise);
   const preview = useQuery({
-    queryKey: ['preview', unitId, fund?.id, dAmount],
+    queryKey: ['preview', unitId, fund?.id, dAmount, dueIds.join(',')],
     enabled: !!unitId && !!fund && !!dAmount,
     staleTime: 0,
-    queryFn: () => rpc<Preview>('preview_allocation', { p_unit_id: unitId, p_amount_paise: dAmount, p_fund_id: fund!.id }),
+    queryFn: () => rpc<Preview>('preview_allocation', { p_unit_id: unitId, p_amount_paise: dAmount, p_fund_id: fund!.id, p_due_ids: dueIds.length ? dueIds : null }),
   });
+  const previewReady = preview.data && dAmount === paise && !preview.isFetching ? preview.data : undefined;
+
+  // a different flat or fund means a different list of months
+  useEffect(() => setDueIds([]), [unitId, fund?.id]);
+  const pickMonths = (ids: string[]) => {
+    setDueIds(ids);
+    if (ids.length) setAmount(paiseToInput(sumRemaining(pendingQ.data?.pending, ids)));
+  };
   const dUtr = useDebounced(normalizeUtr(utr), 500);
   const dup = useQuery({
     queryKey: ['dupRef', dUtr],
@@ -117,6 +130,7 @@ export default function RecordPaymentPage() {
         p_fund_id: fund?.id ?? null,
         p_backdate_reason: needsReason ? backdateReason : null,
         p_allow_duplicate_reference: allowDuplicate,
+        p_due_ids: dueIds.length ? dueIds : null,
       });
       invalidateMoney(qc);
       nudgePush();
@@ -126,6 +140,7 @@ export default function RecordPaymentPage() {
         action: { label: t('View'), onClick: () => nav(`/receipts/${res.entry_id}`) },
       });
       setAmount('');
+      setDueIds([]);
       setUtr('');
       setNote('');
       setFile(null);
@@ -148,7 +163,7 @@ export default function RecordPaymentPage() {
     { label: t('Date'), value: formatDate(date) },
     { label: t('Mode'), value: MODE_LABELS[mode] },
     ...(utr ? [{ label: t('UTR / reference'), value: normalizeUtr(utr) }] : []),
-    ...(coverText ? [{ label: t('Allocation'), value: coverText }] : []),
+    ...(dueIds.length ? [{ label: t('For months'), value: (pendingQ.data?.pending ?? []).filter((d) => dueIds.includes(d.due_id)).map((d) => d.label).join(', ') }] : []),
   ];
 
   return (
@@ -169,10 +184,11 @@ export default function RecordPaymentPage() {
             </NativeSelect>
           </Field>
         )}
+        {unitId && fund && <DuePicker dues={pendingQ.data?.pending} loading={pendingQ.isLoading} selected={dueIds} onChange={pickMonths} />}
         <Field label={t('Amount')} error={errors.amount}>
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">₹</span>
-            <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular pl-8 text-xl font-bold" placeholder="800" />
+            <AmountInput value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular pl-8 text-xl font-bold" placeholder="800" />
           </div>
         </Field>
         {unitId && paise && preview.data && (
@@ -204,7 +220,7 @@ export default function RecordPaymentPage() {
           </Field>
         )}
         <Field label={t('UTR / reference')} optional={!referenceRequired(mode)} error={errors.utr}>
-          <Input value={utr} onChange={(e) => setUtr(e.target.value.toUpperCase())} autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
+          <Input value={utr} onChange={(e) => setUtr(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 30))} autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
         </Field>
         {dup.data && dup.data.length > 0 && (
           <Alert variant="warning">
@@ -239,7 +255,9 @@ export default function RecordPaymentPage() {
         confirmLabel={t('Save payment')}
         loading={saving}
         onConfirm={() => save(false)}
-      />
+      >
+        <PaymentBreakdown preview={previewReady} amountPaise={paise ?? 0} />
+      </ConfirmSheet>
       <ConfirmSheet
         open={dupConfirm}
         onOpenChange={setDupConfirm}

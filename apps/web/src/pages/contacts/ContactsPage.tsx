@@ -1,3 +1,4 @@
+import { PhoneInput } from '@/components/PhoneInput';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -267,12 +268,12 @@ export default function ContactsPage() {
               <Input value={form.name ?? ''} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} maxLength={60} />
             </Field>
             <Field label={t('Phone')}>
-              <Input type="tel" inputMode="numeric" value={form.phone ?? ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+              <PhoneInput value={form.phone ?? ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
             </Field>
             {form.mode !== 'suggest' && (
               <>
                 <Field label={t('Alternate phone')} optional>
-                  <Input type="tel" inputMode="numeric" value={form.alt_phone ?? ''} onChange={(e) => setForm((f) => ({ ...f, alt_phone: e.target.value }))} />
+                  <PhoneInput value={form.alt_phone ?? ''} onChange={(e) => setForm((f) => ({ ...f, alt_phone: e.target.value }))} />
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label={t('Timings')} optional>

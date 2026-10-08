@@ -3,8 +3,9 @@
 //   reset_password       { membership_id }                -> new one-time temporary password, devices signed out
 //   create_staff         { society_id, username, full_name, phone?, role }
 //   approve_registration { membership_id, replace? }
+//   view_as              { society_id, membership_id }   -> super admin only; one-time read-only sign-in token
 import {
-  generateTempPassword,
+  generateTempPin,
   handle,
   HttpError,
   json,
@@ -56,7 +57,7 @@ Deno.serve(
         const slips: { unit_code: string; display_name: string; username: string; password: string }[] = [];
         const errors: { unit_code: string; error: string }[] = [];
         for (const u of list) {
-          const password = generateTempPassword(12);
+          const password = generateTempPin(6);
           const { data: created, error: ce } = await svc.auth.admin.createUser({
             email: usernameToEmail(u.code, slug),
             password,
@@ -99,7 +100,7 @@ Deno.serve(
         if (error) rpcError(error);
         const { data: target } = await svc.auth.admin.getUserById(ctx.user_id);
         const username = (target.user?.email ?? '').split('@')[0]?.toUpperCase() ?? ctx.unit_code;
-        const password = generateTempPassword(12);
+        const password = generateTempPin(6);
         const { error: ue } = await svc.auth.admin.updateUserById(ctx.user_id, { password });
         if (ue) throw new HttpError(400, ue.message);
         const { error: pe } = await svc.rpc('_after_password_reset', { p_actor: actor.id, p_user: ctx.user_id });
@@ -120,7 +121,7 @@ Deno.serve(
           throw new HttpError(400, 'Username must start with a letter and use letters, digits or dashes.');
         }
         const role = body.role === 'super_admin' ? 'super_admin' : 'admin';
-        const password = generateTempPassword(12);
+        const password = generateTempPin(6);
         const { data: created, error: ce } = await svc.auth.admin.createUser({
           email: usernameToEmail(username, slug),
           password,
@@ -178,6 +179,25 @@ Deno.serve(
           rpcError(ae);
         }
         return json(req, { ok: true, username: plan.unit_code });
+      }
+
+      case 'view_as': {
+        // Super admin only (checked again inside _start_view_as). Returns a one-time sign-in token for the
+        // member; the resulting session is read-only in the database (OTP sessions are view-only).
+        if (!body.society_id || !UUID_RE.test(body.society_id)) throw new HttpError(400, 'Missing society.');
+        if (!body.membership_id || !UUID_RE.test(body.membership_id)) throw new HttpError(400, 'Missing member.');
+        const { data: info, error } = await svc.rpc('_start_view_as', {
+          p_actor: actor.id,
+          p_society: body.society_id,
+          p_target_membership: body.membership_id,
+        });
+        if (error) rpcError(error);
+        const target = info as { user_id: string; label: string; role: string };
+        const { data: u, error: ue } = await svc.auth.admin.getUserById(target.user_id);
+        if (ue || !u.user?.email) throw new HttpError(404, 'Member login not found.');
+        const { data: link, error: le } = await svc.auth.admin.generateLink({ type: 'magiclink', email: u.user.email });
+        if (le || !link.properties?.hashed_token) throw new HttpError(500, 'Could not open the member view.');
+        return json(req, { token_hash: link.properties.hashed_token, label: target.label, role: target.role });
       }
 
       default:

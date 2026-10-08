@@ -1,3 +1,4 @@
+import { IntInput } from '@/components/IntInput';
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +16,7 @@ import { ConfirmSheet } from '@/components/ConfirmSheet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { AmountInput } from '@/components/AmountInput';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -194,7 +196,7 @@ function TypeEdit({ value, onClose }: { value: Partial<UnitType> & { amount: str
             <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} placeholder="3BHK" />
           </Field>
           <Field label={t('Monthly maintenance for this type')} optional hint={t('Leave empty to use the society default amount')}>
-            <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <AmountInput value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
         </div>
         <DialogFooter>
@@ -263,13 +265,13 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t('Blocks / plots')} hint="A-C or 1-6, 9-12">
-          <Input value={blocks} onChange={(e) => setBlocks(e.target.value)} />
+          <Input maxLength={100} value={blocks} onChange={(e) => setBlocks(e.target.value)} />
         </Field>
         <Field label={t('Floors')} hint="GF,FF,SF or 1-18">
-          <Input value={floors} onChange={(e) => setFloors(e.target.value)} />
+          <Input maxLength={100} value={floors} onChange={(e) => setFloors(e.target.value)} />
         </Field>
         <Field label={t('Units per floor')}>
-          <Input type="number" min={1} max={50} value={perFloor} onChange={(e) => setPerFloor(e.target.value)} />
+          <IntInput max={50} value={perFloor} onChange={(e) => setPerFloor(e.target.value)} />
         </Field>
         <Field label={t('Flat type')}>
           <NativeSelect value={typeId} onChange={(e) => setTypeId(e.target.value)}>
@@ -283,13 +285,13 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
         </Field>
       </div>
       <Field label={t('Code pattern')} hint={t('{B} block, {F} floor, {N} unit 01, {n} unit 1')}>
-        <Input value={codePattern} onChange={(e) => setCodePattern(e.target.value)} className="font-mono" />
+        <Input maxLength={60} value={codePattern} onChange={(e) => setCodePattern(e.target.value)} className="font-mono" />
       </Field>
       <Field label={t('Name pattern')} hint={t('{FN} gives “Ground Floor”, “Floor 18”…')}>
-        <Input value={namePattern} onChange={(e) => setNamePattern(e.target.value)} />
+        <Input maxLength={80} value={namePattern} onChange={(e) => setNamePattern(e.target.value)} />
       </Field>
       <Field label={t('Block name pattern')}>
-        <Input value={blockNamePattern} onChange={(e) => setBlockNamePattern(e.target.value)} />
+        <Input maxLength={80} value={blockNamePattern} onChange={(e) => setBlockNamePattern(e.target.value)} />
       </Field>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

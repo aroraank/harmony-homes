@@ -43,7 +43,7 @@ Deno.serve(
         if (error) rpcError(error);
         if (!check.ok) throw new HttpError(409, check.message, check.code);
         const problems = passwordProblems(body.password ?? '', check.unit_code);
-        if (problems.length) throw new HttpError(400, `Password must be ${problems.join(', ')}.`);
+        if (problems.length) throw new HttpError(400, `PIN must be ${problems.join(', ')}.`);
 
         const { data: created, error: ce } = await svc.auth.admin.createUser({
           email: `pending-${crypto.randomUUID()}@${slug}.local`,
@@ -73,12 +73,12 @@ Deno.serve(
         const current = body.current_password ?? '';
         const next = body.new_password ?? '';
         const problems = passwordProblems(next, username, current);
-        if (problems.length) throw new HttpError(400, `New password must be ${problems.join(', ')}.`);
+        if (problems.length) throw new HttpError(400, `New PIN must be ${problems.join(', ')}.`);
 
         // Verify the current password, then immediately revoke the throwaway session it created.
         const anon = anonClient();
         const { error: se } = await anon.auth.signInWithPassword({ email, password: current });
-        if (se) throw new HttpError(400, 'Current password is incorrect.', 'bad_password');
+        if (se) throw new HttpError(400, 'Current PIN is incorrect.', 'bad_password');
         await anon.auth.signOut({ scope: 'local' });
 
         const { error: ue } = await svc.auth.admin.updateUserById(user.id, { password: next });

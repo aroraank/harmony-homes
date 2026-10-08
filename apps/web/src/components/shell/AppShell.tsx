@@ -1,21 +1,32 @@
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Bell, CalendarHeart, Home, LayoutGrid, Megaphone, ScrollText, WalletCards, WifiOff } from 'lucide-react';
+import { Bell, CalendarHeart, Eye, Home, LayoutGrid, Megaphone, ScrollText, WalletCards, WifiOff } from 'lucide-react';
 import { useAuth, useMember } from '@/lib/auth';
 import { useDashboard, useNotifications } from '@/lib/queries';
 import { useOnline } from '@/lib/online';
 import { refreshPushRegistration } from '@/lib/push';
+import { setLanguage } from '@/lib/i18n';
+import { rpc } from '@/lib/supabase';
+import { stopViewAs } from '@/lib/viewAs';
 import { brand } from '@/brand';
 import { cn } from '@/lib/utils';
 import { NoticeGate } from './NoticeGate';
+import { CreditLine } from '../CreditLine';
 import { AdminFab } from './AdminFab';
 import { ListSkeleton } from '../States';
 
 export function AppShell() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const m = useMember();
-  const { memberships } = useAuth();
+  const { memberships, viewOnly, viewAs, signOut } = useAuth();
+  const [leaving, setLeaving] = useState(false);
+  const hindi = i18n.language === 'hi';
+  const toggleLang = () => {
+    const next = hindi ? 'en' : 'hi';
+    setLanguage(next);
+    void rpc('set_my_locale', { p_locale: next }).catch(() => undefined);
+  };
   const online = useOnline();
   const loc = useLocation();
   const dash = useDashboard(m.societyId);
@@ -23,8 +34,8 @@ export function AppShell() {
   const unread = (notif.data ?? []).filter((n) => !n.read_at).length;
 
   useEffect(() => {
-    void refreshPushRegistration();
-  }, [m.userId]);
+    if (!viewOnly) void refreshPushRegistration();
+  }, [m.userId, viewOnly]);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -52,6 +63,16 @@ export function AppShell() {
               </div>
             </div>
           </Link>
+          <button
+            type="button"
+            onClick={toggleLang}
+            className="grid size-11 cursor-pointer place-items-center rounded-full text-[15px] font-extrabold hover:bg-white/15"
+            style={{ fontFamily: 'system-ui, sans-serif' }}
+            aria-label={hindi ? 'Switch to English' : 'हिन्दी में बदलें'}
+            title={hindi ? 'English' : 'हिन्दी'}
+          >
+            {hindi ? 'En' : 'अ'}
+          </button>
           <Link
             to="/notifications"
             className="relative grid size-11 place-items-center rounded-full hover:bg-white/15"
@@ -68,6 +89,26 @@ export function AppShell() {
             <LayoutGrid className="size-[22px]" />
           </Link>
         </div>
+        {viewOnly && (
+          <div className="flex items-center gap-2 bg-amber-300 px-4 py-2 text-[12.5px] font-semibold text-amber-950" role="status">
+            <Eye className="size-4 shrink-0" />
+            <span className="min-w-0 flex-1">
+              {viewAs ? t('Viewing as {{who}} — read only', { who: viewAs.label }) : t('Read-only session')}
+            </span>
+            <button
+              type="button"
+              disabled={leaving}
+              onClick={async () => {
+                setLeaving(true);
+                if (viewAs) await stopViewAs();
+                else await signOut();
+              }}
+              className="min-h-9 shrink-0 cursor-pointer rounded-full bg-amber-950 px-3 text-[12px] font-bold text-amber-50 disabled:opacity-60"
+            >
+              {viewAs ? t('Back to my account') : t('Sign out')}
+            </button>
+          </div>
+        )}
         {!online && (
           <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-[12.5px] font-semibold text-amber-950">
             <WifiOff className="size-4" /> {t("You're offline — showing saved data. Changes are disabled.")}
@@ -79,9 +120,10 @@ export function AppShell() {
         <Suspense fallback={<ListSkeleton rows={4} />}>
           <Outlet />
         </Suspense>
+        <CreditLine className="mt-10" />
       </main>
 
-      {m.isAdmin && ['/', '/dues', '/ledger', '/events', '/notices'].includes(loc.pathname) && <AdminFab />}
+      {m.isAdmin && !viewOnly && ['/', '/dues', '/ledger', '/events', '/notices'].includes(loc.pathname) && <AdminFab />}
 
       <nav
         aria-label={t('Main')}
@@ -124,7 +166,7 @@ export function AppShell() {
         </ul>
       </nav>
 
-      <NoticeGate />
+      {!viewOnly && <NoticeGate />}
     </div>
   );
 }
