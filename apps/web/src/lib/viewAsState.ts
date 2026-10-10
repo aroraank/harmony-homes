@@ -36,10 +36,13 @@ export function isViewingAs(): boolean {
 /** RPCs that only read. Everything else is refused in the app while viewing as someone. */
 export const READ_ONLY_RPCS = new Set([
   'check_duplicate_reference',
+  'contact_directory',
   'dashboard',
   'defaulters',
   'event_report',
   'society_position',
+  'society_position_breakdown',
+  'app_feedback_list',
   'recurring_overview',
   'events_overview',
   'ledger_statement',

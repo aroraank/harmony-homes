@@ -37,7 +37,10 @@ export function deviceLabel(ua: string = navigator.userAgent): string {
 }
 
 export function isIOS(): boolean {
-  return /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return (
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
 }
 
 export function isStandalone(): boolean {
@@ -45,6 +48,14 @@ export function isStandalone(): boolean {
     window.matchMedia('(display-mode: standalone)').matches ||
     (navigator as unknown as { standalone?: boolean }).standalone === true
   );
+}
+
+/** True only on an iPhone/iPad that is NOT running Safari (Chrome, Firefox, Edge, etc. on iOS
+ * are all just Safari's WebKit under an Apple-imposed restriction, so none of them can install
+ * a PWA or add it to the home screen — only Safari itself can). */
+export function isIOSNonSafari(): boolean {
+  const ua = navigator.userAgent;
+  return isIOS() && /CriOS|FxiOS|EdgiOS|OPiOS|mercury/i.test(ua);
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {
@@ -91,4 +102,29 @@ export async function shareText(text: string, title = 'Harmony Homes'): Promise<
 
 export function whatsappLink(phone: string, text?: string): string {
   return `https://wa.me/91${phone}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+}
+
+const FLOOR_LONG_NAMES: Record<string, string> = {
+  LG: 'Lower Ground',
+  B: 'Basement',
+  G: 'Ground Floor',
+  GF: 'Ground Floor',
+  FF: 'First Floor',
+  SF: 'Second Floor',
+  TF: 'Third Floor',
+};
+
+/**
+ * Human-friendly flat label for members, e.g. "Plot 2, First Floor" instead of "P2-FF".
+ * Prefers a real display name when one is available; otherwise expands the short code.
+ */
+export function unitLabel(code: string | null | undefined, displayName?: string | null): string {
+  if (displayName) return displayName;
+  if (!code) return '';
+  const m = /^P?(\d+)[\s-]?([A-Za-z]{1,3})$/.exec(code.trim());
+  if (m) {
+    const floor = FLOOR_LONG_NAMES[m[2].toUpperCase()] ?? m[2];
+    return `Plot ${m[1]}, ${floor}`;
+  }
+  return code;
 }

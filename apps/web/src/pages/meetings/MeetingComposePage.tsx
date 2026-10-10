@@ -35,7 +35,8 @@ export default function MeetingComposePage() {
   const existing = useQuery({
     queryKey: ['meeting', id],
     enabled: isEdit,
-    queryFn: async () => unwrap<Meeting>(await supabase.from('v_meetings').select('*').eq('id', id!).single()),
+    queryFn: async () =>
+      unwrap<Meeting>(await supabase.from('v_meetings').select('*').eq('id', id!).single()),
   });
 
   const [title, setTitle] = useState('');
@@ -66,7 +67,8 @@ export default function MeetingComposePage() {
     setAgenda(own.length ? own.map((a) => a.text) : ['']);
   }, [existing.data]);
 
-  const toggle = (list: string[], id_: string) => (list.includes(id_) ? list.filter((x) => x !== id_) : [...list, id_]);
+  const toggle = (list: string[], id_: string) =>
+    list.includes(id_) ? list.filter((x) => x !== id_) : [...list, id_];
 
   const audienceOk = useMemo(() => {
     if (scope === 'all') return true;
@@ -76,7 +78,8 @@ export default function MeetingComposePage() {
 
   if (!m.can('manage_meetings')) return <EmptyState title={t('You do not have permission to do this.')} />;
   if (isEdit && existing.isLoading) return <CardSkeleton className="h-96" />;
-  if (isEdit && existing.error) return <ErrorState error={existing.error} onRetry={() => existing.refetch()} />;
+  if (isEdit && existing.error)
+    return <ErrorState error={existing.error} onRetry={() => existing.refetch()} />;
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -141,13 +144,27 @@ export default function MeetingComposePage() {
 
   return (
     <div className="animate-fade-up">
-      <PageHeader title={isEdit ? t('Edit meeting') : t('Call a meeting')} back={isEdit ? `/meetings/${id}` : '/meetings'} />
+      <PageHeader
+        title={isEdit ? t('Edit meeting') : t('Call a meeting')}
+        back={isEdit ? `/meetings/${id}` : '/meetings'}
+      />
       <Card className="space-y-4 p-4">
         <Field label={t('Title')} error={errors.title}>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} placeholder={t('e.g. AGM — water tank cleaning')} />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={140}
+            placeholder={t('e.g. AGM — water tank cleaning')}
+          />
         </Field>
         <Field label={t('Description / agenda intro')} optional>
-          <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} placeholder={t('Why this meeting is being called')} />
+          <Textarea
+            rows={3}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={2000}
+            placeholder={t('Why this meeting is being called')}
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('Date')} error={errors.date}>
@@ -158,7 +175,12 @@ export default function MeetingComposePage() {
           </Field>
         </div>
         <Field label={t('Location')} optional>
-          <Input value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} placeholder={t('e.g. Clubhouse')} />
+          <Input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            maxLength={200}
+            placeholder={t('e.g. Clubhouse')}
+          />
         </Field>
       </Card>
 
@@ -180,7 +202,9 @@ export default function MeetingComposePage() {
               onClick={() => setScope(k)}
               className={cn(
                 'min-h-11 cursor-pointer rounded-xl border px-2 text-[13px] font-semibold transition-colors',
-                scope === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-secondary',
+                scope === k
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'bg-card hover:bg-secondary',
               )}
             >
               {label}
@@ -190,8 +214,14 @@ export default function MeetingComposePage() {
         {scope === 'unit_types' && (
           <div className="flex flex-wrap gap-2">
             {types.data?.map((ty) => (
-              <label key={ty.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3">
-                <Checkbox checked={typeIds.includes(ty.id)} onCheckedChange={() => setTypeIds((l) => toggle(l, ty.id))} />
+              <label
+                key={ty.id}
+                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3"
+              >
+                <Checkbox
+                  checked={typeIds.includes(ty.id)}
+                  onCheckedChange={() => setTypeIds((l) => toggle(l, ty.id))}
+                />
                 <span className="text-sm font-semibold">{ty.name}</span>
               </label>
             ))}
@@ -201,14 +231,19 @@ export default function MeetingComposePage() {
           <div className="max-h-64 divide-y overflow-y-auto rounded-xl border">
             {units.data?.map((u) => (
               <label key={u.id} className="flex min-h-10 cursor-pointer items-center gap-3 px-3 py-2">
-                <Checkbox checked={customIds.includes(u.id)} onCheckedChange={() => setCustomIds((l) => toggle(l, u.id))} />
+                <Checkbox
+                  checked={customIds.includes(u.id)}
+                  onCheckedChange={() => setCustomIds((l) => toggle(l, u.id))}
+                />
                 <span className="tabular w-16 text-sm font-bold">{u.code}</span>
-                <span className="truncate text-[13px] text-muted-foreground">{u.display_name}</span>
+                <span className="break-words text-[13px] text-muted-foreground">{u.display_name}</span>
               </label>
             ))}
           </div>
         )}
-        <p className="text-[12.5px] text-muted-foreground">{t('Everyone sees the notice; it states clearly who is expected to attend.')}</p>
+        <p className="text-[12.5px] text-muted-foreground">
+          {t('Everyone sees the notice; it states clearly who is expected to attend.')}
+        </p>
         {errors.scope && <p className="text-[13px] font-medium text-destructive">{errors.scope}</p>}
       </Card>
 
@@ -231,7 +266,12 @@ export default function MeetingComposePage() {
               maxLength={300}
               placeholder={t('e.g. Approve vendor quote')}
             />
-            <Button variant="ghost" size="icon" onClick={() => setAgenda((l) => l.filter((_, j) => j !== i))} disabled={agenda.length === 1}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setAgenda((l) => l.filter((_, j) => j !== i))}
+              disabled={agenda.length === 1}
+            >
               <Trash2 className="size-4" />
             </Button>
           </div>
@@ -243,7 +283,8 @@ export default function MeetingComposePage() {
           {t('Save draft')}
         </Button>
         <Button onClick={() => validate() && setConfirm('publish')}>
-          <CalendarClock /> {isEdit && existing.data?.status === 'published' ? t('Save & notify') : t('Publish')}
+          <CalendarClock />{' '}
+          {isEdit && existing.data?.status === 'published' ? t('Save & notify') : t('Publish')}
         </Button>
       </div>
 
@@ -251,7 +292,11 @@ export default function MeetingComposePage() {
         open={!!confirm}
         onOpenChange={(o) => !o && setConfirm(null)}
         title={confirm === 'publish' ? t('Publish this meeting?') : t('Save as draft?')}
-        description={confirm === 'publish' ? t('Every flat sees it; those expected to attend are notified directly.') : t('Nothing is sent to members yet.')}
+        description={
+          confirm === 'publish'
+            ? t('Every flat sees it; those expected to attend are notified directly.')
+            : t('Nothing is sent to members yet.')
+        }
         confirmLabel={confirm === 'publish' ? t('Publish') : t('Save draft')}
         loading={saving}
         onConfirm={() => save(confirm === 'publish')}

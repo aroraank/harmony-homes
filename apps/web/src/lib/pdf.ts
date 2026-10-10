@@ -4,7 +4,10 @@ import { brand } from '@/brand';
 // jsPDF's built-in fonts cannot draw "₹", so PDFs use "Rs." (amount in words is always included).
 export function pdfINR(paise: number): string {
   const abs = Math.abs(paise);
-  const body = new Intl.NumberFormat('en-IN', { minimumFractionDigits: abs % 100 ? 2 : 0, maximumFractionDigits: 2 }).format(abs / 100);
+  const body = new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: abs % 100 ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(abs / 100);
   return `${paise < 0 ? '-' : ''}Rs. ${body}`;
 }
 
@@ -93,7 +96,8 @@ export async function receiptPdf(r: ReceiptData): Promise<Blob> {
   if (r.memberName) row('Received from', r.memberName);
   row('Mode', r.mode);
   if (r.reference) row('UTR / reference', r.reference);
-  if (r.covers.length) row('Towards', r.covers.map((c) => `${c.label} (${pdfINR(c.amount_paise)})`).join(', '));
+  if (r.covers.length)
+    row('Towards', r.covers.map((c) => `${c.label} (${pdfINR(c.amount_paise)})`).join(', '));
   if (r.recordedBy) row('Recorded / approved by', r.recordedBy);
 
   // amount box
@@ -112,7 +116,11 @@ export async function receiptPdf(r: ReceiptData): Promise<Blob> {
   y += 32;
 
   // verification QR
-  const qr = await QR.toDataURL(r.verifyUrl, { margin: 1, width: 240, color: { dark: '#064E3B', light: '#FFFFFF' } });
+  const qr = await QR.toDataURL(r.verifyUrl, {
+    margin: 1,
+    width: 240,
+    color: { dark: '#064E3B', light: '#FFFFFF' },
+  });
   doc.addImage(qr, 'PNG', 12, y, 26, 26);
   doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 110);
@@ -139,7 +147,9 @@ export async function receiptPdf(r: ReceiptData): Promise<Blob> {
     doc.text('CANCELLED', W / 2, H / 2 + 10, { align: 'center', angle: 30 });
     if (r.cancelReason) {
       doc.setFontSize(10);
-      doc.text(doc.splitTextToSize(`Reason: ${r.cancelReason}`, W - 30), W / 2, H / 2 + 30, { align: 'center' });
+      doc.text(doc.splitTextToSize(`Reason: ${r.cancelReason}`, W - 30), W / 2, H / 2 + 30, {
+        align: 'center',
+      });
     }
   }
   return doc.output('blob');
@@ -153,7 +163,11 @@ export interface ReportSection {
 }
 
 /** Generic A4 report: header + sections of key/value summaries and tables */
-export async function reportPdf(title: string, societyName: string, sections: ReportSection[]): Promise<Blob> {
+export async function reportPdf(
+  title: string,
+  societyName: string,
+  sections: ReportSection[],
+): Promise<Blob> {
   const { jsPDF, autoTable } = await loadJsPdf();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
@@ -222,7 +236,12 @@ export async function reportPdf(title: string, societyName: string, sections: Re
     doc.setFontSize(7.5);
     doc.setTextColor(120, 130, 126);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated ${formatDateTime(new Date().toISOString())} IST · Page ${i} of ${pages}`, W / 2, 290, { align: 'center' });
+    doc.text(
+      `Generated ${formatDateTime(new Date().toISOString())} IST · Page ${i} of ${pages}`,
+      W / 2,
+      290,
+      { align: 'center' },
+    );
   }
   return doc.output('blob');
 }
@@ -254,6 +273,8 @@ export interface StatementLine {
   b: number;
   /** change of the running balance caused by this line (paise) */
   delta: number;
+  /** true when this payment, though dated in this period, actually settles an earlier due (a catch-up payment) — shown with a highlighted background */
+  highlight?: boolean;
 }
 
 /**
@@ -276,8 +297,12 @@ export async function statementPdf(o: {
   const { jsPDF, autoTable } = await loadJsPdf();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
-  const num = (p: number) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(p) / 100);
-  const bal = (p: number) => (o.balanceMode === 'owed' ? `${num(p)} ${p >= 0 ? 'Dr' : 'Cr'}` : `${p < 0 ? '-' : ''}${num(p)}`);
+  const num = (p: number) =>
+    new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+      Math.abs(p) / 100,
+    );
+  const bal = (p: number) =>
+    o.balanceMode === 'owed' ? `${num(p)} ${p >= 0 ? 'Dr' : 'Cr'}` : `${p < 0 ? '-' : ''}${num(p)}`;
 
   doc.setFillColor(5, 150, 105);
   doc.rect(0, 0, W, 26, 'F');
@@ -307,32 +332,63 @@ export async function statementPdf(o: {
   const totalB = o.lines.reduce((s, l) => s + l.b, 0);
   const closing = o.opening + o.lines.reduce((s, l) => s + l.delta, 0);
   const withFlat = o.lines.some((l) => l.flat !== undefined);
-  const row = (date: string, flat: string, desc: string, ref: string, a: string, b: string, bl: string): string[] =>
-    withFlat ? [date, flat, desc, ref, a, b, bl] : [date, desc, ref, a, b, bl];
+  const row = (
+    date: string,
+    flat: string,
+    desc: string,
+    ref: string,
+    a: string,
+    b: string,
+    bl: string,
+  ): string[] => (withFlat ? [date, flat, desc, ref, a, b, bl] : [date, desc, ref, a, b, bl]);
   const body: (string | number)[][] = [row('', '', 'Opening balance', '', '', '', bal(o.opening))];
+  const highlightRows = new Set<number>();
   for (const l of o.lines) {
     run += l.delta;
-    body.push(row(formatDate(l.date), l.flat ?? '', l.description, l.ref, l.a ? num(l.a) : '', l.b ? num(l.b) : '', bal(run)));
+    if (l.highlight) highlightRows.add(body.length);
+    body.push(
+      row(
+        formatDate(l.date),
+        l.flat ?? '',
+        l.description,
+        l.ref,
+        l.a ? num(l.a) : '',
+        l.b ? num(l.b) : '',
+        bal(run),
+      ),
+    );
   }
   body.push(row('', '', 'Total for the period', '', num(totalA), num(totalB), ''));
   body.push(row('', '', 'Closing balance', '', '', '', bal(closing)));
 
   autoTable(doc, {
     startY: 38,
-    head: [withFlat ? ['Date', 'Flat', 'Particulars', 'Receipt / Ref', `${o.headA} (Rs.)`, `${o.headB} (Rs.)`, 'Balance (Rs.)'] : ['Date', 'Particulars', 'Receipt / Ref', `${o.headA} (Rs.)`, `${o.headB} (Rs.)`, 'Balance (Rs.)']],
+    head: [
+      withFlat
+        ? [
+            'Date',
+            'Flat',
+            'Particulars',
+            'Receipt / Ref',
+            `${o.headA} (Rs.)`,
+            `${o.headB} (Rs.)`,
+            'Balance (Rs.)',
+          ]
+        : ['Date', 'Particulars', 'Receipt / Ref', `${o.headA} (Rs.)`, `${o.headB} (Rs.)`, 'Balance (Rs.)'],
+    ],
     body,
     theme: 'striped',
     headStyles: { fillColor: [5, 150, 105], fontSize: 8.5 },
     styles: { fontSize: 8, cellPadding: 1.6, overflow: 'linebreak' },
     columnStyles: withFlat
       ? {
-          0: { cellWidth: 20 },
-          1: { cellWidth: 14, fontStyle: 'bold' },
+          0: { cellWidth: 18 },
+          1: { cellWidth: 26, fontStyle: 'bold' },
           2: { cellWidth: 'auto' },
-          3: { cellWidth: 29 },
-          4: { halign: 'right', cellWidth: 21 },
-          5: { halign: 'right', cellWidth: 21 },
-          6: { halign: 'right', cellWidth: 25, fontStyle: 'bold' },
+          3: { cellWidth: 24 },
+          4: { halign: 'right', cellWidth: 19 },
+          5: { halign: 'right', cellWidth: 19 },
+          6: { halign: 'right', cellWidth: 23, fontStyle: 'bold' },
         }
       : {
           0: { cellWidth: 21 },
@@ -349,16 +405,23 @@ export async function statementPdf(o: {
       if (d.section === 'body' && (first || last)) {
         d.cell.styles.fontStyle = 'bold';
         d.cell.styles.fillColor = [220, 245, 235];
+      } else if (d.section === 'body' && highlightRows.has(d.row.index)) {
+        d.cell.styles.fillColor = [255, 240, 199];
       }
     },
   });
 
-  if (o.note) {
+  const legend =
+    highlightRows.size > 0
+      ? 'Rows shaded amber were paid in this period but settle an earlier due (a catch-up payment for a previous month).'
+      : null;
+  const noteText = [o.note, legend].filter(Boolean).join(' ');
+  if (noteText) {
     const y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(8.5);
     doc.setTextColor(60, 70, 66);
-    doc.text(doc.splitTextToSize(o.note, W - 20), 10, y);
+    doc.text(doc.splitTextToSize(noteText, W - 20), 10, y);
   }
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
@@ -366,7 +429,12 @@ export async function statementPdf(o: {
     doc.setFontSize(7.5);
     doc.setTextColor(120, 130, 126);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Computer-generated statement · ${formatDateTime(new Date().toISOString())} IST · Page ${i} of ${pages}`, W / 2, 290, { align: 'center' });
+    doc.text(
+      `Computer-generated statement · ${formatDateTime(new Date().toISOString())} IST · Page ${i} of ${pages}`,
+      W / 2,
+      290,
+      { align: 'center' },
+    );
   }
   return doc.output('blob');
 }

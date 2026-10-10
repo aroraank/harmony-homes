@@ -30,7 +30,7 @@ import {
 import { useMember } from '@/lib/auth';
 import { errorMessage, newIdemKey, rpc, supabase } from '@/lib/supabase';
 import { invalidateMoney, unwrap, useExpenseCategories, useFunds, useUnits } from '@/lib/queries';
-import { categoryLabel, cn, MODE_LABELS } from '@/lib/utils';
+import { categoryLabel, cn, MODE_LABELS, unitLabel } from '@/lib/utils';
 import { downloadCsv, rupees } from '@/lib/csv';
 import { useOnline } from '@/lib/online';
 import { PageHeader } from '@/components/PageHeader';
@@ -45,6 +45,7 @@ import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { LedgerRow } from '@/types';
+import { SocietyPositionStrip } from '@/components/SocietyPosition';
 
 const PAGE = 50;
 
@@ -62,6 +63,7 @@ export default function LedgerPage() {
   const [dir, setDir] = useState<'' | 'credit' | 'debit'>('');
   const [period, setPeriod] = useState('');
   const [search, setSearch] = useState('');
+  const [showCancelled, setShowCancelled] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   const [selected, setSelected] = useState<LedgerRow | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -72,6 +74,9 @@ export default function LedgerPage() {
 
   const buildQuery = () => {
     let q = supabase.from('v_ledger').select('*').eq('society_id', m.societyId);
+    // A cancelled entry and its cancellation share the same date and cancel out exactly, so hiding
+    // both changes no total. Admins can still show them for audit.
+    if (!(m.isAdmin && showCancelled)) q = q.eq('is_reversed', false).is('reverses_entry_id', null);
     if (scope === 'me') q = q.eq('unit_id', m.unit_id as string);
     else if (flat) q = q.eq('unit_id', flat);
     if (fund) q = q.eq('fund_id', fund);
@@ -86,7 +91,7 @@ export default function LedgerPage() {
   };
 
   const q = useInfiniteQuery({
-    queryKey: ['ledger', m.societyId, scope, flat, fund, dir, period, search],
+    queryKey: ['ledger', m.societyId, scope, flat, fund, dir, period, search, m.isAdmin && showCancelled],
     initialPageParam: 0,
     queryFn: async ({ pageParam }) =>
       unwrap<LedgerRow[]>(await buildQuery().range(pageParam, pageParam + PAGE - 1)),
@@ -184,6 +189,7 @@ export default function LedgerPage() {
           </div>
         }
       />
+      <SocietyPositionStrip />
       {hasFlat && (
         <div className="mb-3 grid grid-cols-2 gap-1 rounded-2xl bg-muted p-1" role="tablist">
           {(
@@ -238,7 +244,7 @@ export default function LedgerPage() {
               <option value="">{t('All flats')}</option>
               {units.data?.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.code}
+                  {unitLabel(u.code, u.display_name)}
                 </option>
               ))}
             </NativeSelect>
@@ -268,6 +274,24 @@ export default function LedgerPage() {
             <option value="credit">{t('Money in (credits)')}</option>
             <option value="debit">{t('Money out (debits)')}</option>
           </NativeSelect>
+          {m.isAdmin && (
+            <label className="flex cursor-pointer items-center gap-2 px-1 text-[13px] text-muted-foreground sm:col-span-3">
+              <input
+                type="checkbox"
+                checked={showCancelled}
+                onChange={(e) => setShowCancelled(e.target.checked)}
+                className="size-4 accent-primary"
+              />
+              {t('Show cancelled entries (admin audit)')}
+            </label>
+          )}
+          {scope === 'society' && flat && (
+            <Button variant="outline" size="sm" asChild className="sm:col-span-3">
+              <Link to={`/reports/unit/${flat}`}>
+                <ReceiptText /> {t('View paid / pending statement for this flat')}
+              </Link>
+            </Button>
+          )}
           {activeFilters > 0 && (
             <Button
               variant="ghost"
@@ -360,9 +384,9 @@ function EntryRow({
   const isEv = r.fund_kind === 'event' && r.category === 'event_contribution';
   const title =
     isEv && r.unit_code
-      ? `${r.fund_name} · ${r.unit_code}`
+      ? `${r.fund_name} · ${unitLabel(r.unit_code)}`
       : r.unit_code
-        ? `${r.unit_code} · ${categoryLabel(r.category, cats)}`
+        ? `${unitLabel(r.unit_code)} · ${categoryLabel(r.category, cats)}`
         : r.payee
           ? `${r.payee}`
           : categoryLabel(r.category, cats);
@@ -387,8 +411,8 @@ function EntryRow({
         <Icon className="size-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className={cn('truncate text-[14.5px] font-semibold', r.is_reversed && 'struck')}>{title}</p>
-        <p className="truncate text-[12px] text-muted-foreground">
+        <p className={cn('break-words text-[14.5px] font-semibold', r.is_reversed && 'struck')}>{title}</p>
+        <p className="break-words text-[12px] text-muted-foreground">
           {isEv && (
             <span className="mr-1 rounded-full bg-lime-100 px-1.5 py-px text-[10px] font-bold uppercase text-lime-800 dark:bg-lime-500/15 dark:text-lime-300">
               {t('Event')}
@@ -456,7 +480,7 @@ function EntrySheet({
     [t('Date'), formatDate(e.entry_date)],
     [t('Fund'), e.fund_name],
     [t('Category'), categoryLabel(e.category, cats)],
-    [t('Flat'), e.unit_code],
+    [t('Flat'), unitLabel(e.unit_code)],
     [t('Payee'), e.payee],
     [t('Mode'), MODE_LABELS[e.payment_mode ?? ''] ?? e.payment_mode],
     [t('UTR / reference'), e.reference_no],

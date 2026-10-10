@@ -10,7 +10,7 @@ import LoginPage from './pages/auth/LoginPage';
 import HomePage from './pages/HomePage';
 
 const RecurringPage = lazy(() => import('./pages/events/RecurringPage'));
-const RegisterPage = lazy(() => import('./pages/auth/RegisterPage'));
+// Self-registration is disabled: new residents are added by the admin, not via /register.
 const ChangePasswordPage = lazy(() => import('./pages/auth/ChangePasswordPage'));
 const NoAccessPage = lazy(() => import('./pages/auth/NoAccessPage'));
 const SetupNeededPage = lazy(() => import('./pages/auth/SetupNeededPage'));
@@ -33,6 +33,8 @@ const MonthReportPage = lazy(() => import('./pages/reports/MonthReportPage'));
 const UnitStatementPage = lazy(() => import('./pages/reports/UnitStatementPage'));
 const DefaultersPage = lazy(() => import('./pages/reports/DefaultersPage'));
 const PayeeHistoryPage = lazy(() => import('./pages/reports/PayeeHistoryPage'));
+const PositionPage = lazy(() => import('./pages/reports/PositionPage'));
+const FeedbackPage = lazy(() => import('./pages/feedback/FeedbackPage'));
 const ConcernsPage = lazy(() => import('./pages/concerns/ConcernsPage'));
 const ConcernNewPage = lazy(() => import('./pages/concerns/ConcernNewPage'));
 const ConcernDetailPage = lazy(() => import('./pages/concerns/ConcernDetailPage'));
@@ -51,7 +53,8 @@ const MembersPage = lazy(() => import('./pages/admin/MembersPage'));
 const SettingsPage = lazy(() => import('./pages/admin/SettingsPage'));
 const AuditPage = lazy(() => import('./pages/admin/AuditPage'));
 const AlertsPage = lazy(() => import('./pages/admin/AlertsPage'));
-const TransferPage = lazy(() => import('./pages/admin/TransferPage'));
+// Move money between funds: disabled for now.
+// const TransferPage = lazy(() => import('./pages/admin/TransferPage'));
 
 function Protected() {
   const { loading, session, ctx, ctxLoading, ctxError, active, signOut } = useAuth();
@@ -94,9 +97,23 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<Lazy><RegisterPage /></Lazy>} />
-      <Route path="/r/:token" element={<Lazy><VerifyReceiptPage /></Lazy>} />
-      <Route path="/change-password" element={<Lazy><ChangePasswordPage /></Lazy>} />
+      <Route path="/register" element={<Navigate to="/" replace />} />
+      <Route
+        path="/r/:token"
+        element={
+          <Lazy>
+            <VerifyReceiptPage />
+          </Lazy>
+        }
+      />
+      <Route
+        path="/change-password"
+        element={
+          <Lazy>
+            <ChangePasswordPage />
+          </Lazy>
+        }
+      />
       <Route element={<Protected />}>
         <Route index element={<HomePage />} />
         <Route path="dues" element={<DuesPage />} />
@@ -105,7 +122,14 @@ export default function App() {
         <Route path="ledger" element={<LedgerPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="events/new" element={<EventCreatePage />} />
-        <Route path="events/recurring" element={<Lazy><RecurringPage /></Lazy>} />
+        <Route
+          path="events/recurring"
+          element={
+            <Lazy>
+              <RecurringPage />
+            </Lazy>
+          }
+        />
         <Route path="events/:id" element={<EventDetailPage />} />
         <Route path="meetings" element={<MeetingsPage />} />
         <Route path="meetings/new" element={<MeetingComposePage />} />
@@ -118,6 +142,8 @@ export default function App() {
         <Route path="reports/month/:period?" element={<MonthReportPage />} />
         <Route path="reports/unit/:unitId?" element={<UnitStatementPage />} />
         <Route path="reports/pending" element={<DefaultersPage />} />
+        <Route path="reports/position" element={<PositionPage />} />
+        <Route path="feedback" element={<FeedbackPage />} />
         <Route path="reports/defaulters" element={<Navigate to="/reports/pending" replace />} />
         <Route path="reports/payees" element={<PayeeHistoryPage />} />
         <Route path="concerns" element={<ConcernsPage />} />
@@ -138,7 +164,8 @@ export default function App() {
         <Route path="admin/settings" element={<SettingsPage />} />
         <Route path="admin/audit" element={<AuditPage />} />
         <Route path="admin/alerts" element={<AlertsPage />} />
-        <Route path="admin/transfer" element={<TransferPage />} />
+        {/* Move money between funds: disabled for now — redirect any direct link to home. */}
+        <Route path="admin/transfer" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -2,7 +2,21 @@ import { PhoneInput } from '@/components/PhoneInput';
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Check, Eye, KeyRound, LogOut, MoreVertical, Pencil, Printer, ShieldCheck, UserMinus, UserPlus, Users, X } from 'lucide-react';
+import {
+  Check,
+  Download,
+  Eye,
+  KeyRound,
+  LogOut,
+  MoreVertical,
+  Pencil,
+  Printer,
+  ShieldCheck,
+  UserMinus,
+  UserPlus,
+  Users,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime, MOBILE_RE, normalizeMobile } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
@@ -11,6 +25,8 @@ import { errorMessage, invokeFn, rpc, supabase } from '@/lib/supabase';
 import { unwrap, useUnits } from '@/lib/queries';
 import { brand } from '@/brand';
 import { PageHeader } from '@/components/PageHeader';
+import { buildZip } from '@/lib/zip';
+import { downloadBlob } from '@/lib/csv';
 import { EmptyState, QueryState } from '@/components/States';
 import { Field } from '@/components/Field';
 import { ConfirmSheet } from '@/components/ConfirmSheet';
@@ -21,7 +37,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { MemberRow, Role } from '@/types';
 
@@ -50,7 +72,9 @@ export default function MembersPage() {
       unwrap<Row[]>(
         await supabase
           .from('memberships')
-          .select('id, user_id, society_id, unit_id, role, status, created_at, deactivated_reason, profiles!memberships_user_id_fkey(full_name, phone, must_change_password), units(code, display_name)')
+          .select(
+            'id, user_id, society_id, unit_id, role, status, created_at, deactivated_reason, profiles!memberships_user_id_fkey(full_name, phone, must_change_password), units(code, display_name)',
+          )
           .eq('society_id', m.societyId)
           .order('created_at'),
       ),
@@ -59,14 +83,24 @@ export default function MembersPage() {
   const reqs = useQuery({
     queryKey: ['pinRequests', m.societyId],
     queryFn: async () =>
-      unwrap<{ user_id: string }[]>(await supabase.from('pin_reset_requests').select('user_id').eq('society_id', m.societyId).is('resolved_at', null)),
+      unwrap<{ user_id: string }[]>(
+        await supabase
+          .from('pin_reset_requests')
+          .select('user_id')
+          .eq('society_id', m.societyId)
+          .is('resolved_at', null),
+      ),
   });
   const asked = new Set((reqs.data ?? []).map((x) => x.user_id));
   const rows = q.data ?? [];
-  const active = rows.filter((r) => r.status === 'active').sort((a, b) => (a.units?.code ?? 'ZZ' + a.role).localeCompare(b.units?.code ?? 'ZZ' + b.role));
+  const active = rows
+    .filter((r) => r.status === 'active')
+    .sort((a, b) => (a.units?.code ?? 'ZZ' + a.role).localeCompare(b.units?.code ?? 'ZZ' + b.role));
   const pending = rows.filter((r) => r.status === 'pending');
   const deactivated = rows.filter((r) => r.status === 'deactivated');
-  const withLogin = new Set(rows.filter((r) => r.status !== 'deactivated' && r.unit_id).map((r) => r.unit_id));
+  const withLogin = new Set(
+    rows.filter((r) => r.status !== 'deactivated' && r.unit_id).map((r) => r.unit_id),
+  );
   const needLogin = (units.data ?? []).filter((u) => !withLogin.has(u.id));
   const [selected, setSelected] = useState<string[]>([]);
   const allSelected = needLogin.length > 0 && needLogin.every((u) => selected.includes(u.id));
@@ -81,12 +115,21 @@ export default function MembersPage() {
   const bulkCreate = async () => {
     setBusy(true);
     try {
-      const r = await invokeFn<{ slips: Slip[]; errors: { unit_code: string; error: string }[] }>('admin-users', {
-        action: 'bulk_create_logins',
-        society_id: m.societyId,
-        unit_ids: selected.length ? selected : null,
-      });
-      if (r.errors.length) toast.error(t('{{n}} logins could not be created: {{list}}', { n: r.errors.length, list: r.errors.map((e) => `${e.unit_code} (${e.error})`).join(', ') }));
+      const r = await invokeFn<{ slips: Slip[]; errors: { unit_code: string; error: string }[] }>(
+        'admin-users',
+        {
+          action: 'bulk_create_logins',
+          society_id: m.societyId,
+          unit_ids: selected.length ? selected : null,
+        },
+      );
+      if (r.errors.length)
+        toast.error(
+          t('{{n}} logins could not be created: {{list}}', {
+            n: r.errors.length,
+            list: r.errors.map((e) => `${e.unit_code} (${e.error})`).join(', '),
+          }),
+        );
       if (r.slips.length) setSlips(r.slips);
       setSelected([]);
       refresh();
@@ -100,8 +143,18 @@ export default function MembersPage() {
   const reset = async (row: Row) => {
     setBusy(true);
     try {
-      const r = await invokeFn<{ username: string; password: string; unit_code: string | null }>('admin-users', { action: 'reset_password', membership_id: row.id });
-      setSlips([{ username: r.username, password: r.password, unit_code: r.unit_code ?? undefined, display_name: row.profiles?.full_name }]);
+      const r = await invokeFn<{ username: string; password: string; unit_code: string | null }>(
+        'admin-users',
+        { action: 'reset_password', membership_id: row.id },
+      );
+      setSlips([
+        {
+          username: r.username,
+          password: r.password,
+          unit_code: r.unit_code ?? undefined,
+          display_name: row.profiles?.full_name,
+        },
+      ]);
       setConfirmReset(null);
       refresh();
     } catch (e) {
@@ -140,7 +193,8 @@ export default function MembersPage() {
     }
   };
 
-  const roleLabel = (r: Role) => (r === 'super_admin' ? t('Super admin') : r === 'admin' ? t('Admin') : t('Resident'));
+  const roleLabel = (r: Role) =>
+    r === 'super_admin' ? t('Super admin') : r === 'admin' ? t('Admin') : t('Resident');
 
   return (
     <div className="animate-fade-up">
@@ -168,7 +222,14 @@ export default function MembersPage() {
         </TabsList>
 
         <TabsContent value="active">
-          <QueryState query={q} empty={() => (active.length ? null : <EmptyState icon={<Users className="size-7" />} title={t('No members yet')} />)}>
+          <QueryState
+            query={q}
+            empty={() =>
+              active.length ? null : (
+                <EmptyState icon={<Users className="size-7" />} title={t('No members yet')} />
+              )
+            }
+          >
             {() => (
               <Card className="divide-y">
                 {active.map((r) => (
@@ -176,15 +237,24 @@ export default function MembersPage() {
                     <span className="tabular w-16 shrink-0 font-bold">{r.units?.code ?? '—'}</span>
                     <div className="min-w-0 flex-1">
                       {asked.has(r.user_id) && <Badge variant="warning">{t('Asked for a new PIN')}</Badge>}
-                      <p className="truncate text-sm font-semibold">{r.profiles?.full_name}</p>
+                      <p className="break-words text-sm font-semibold">{r.profiles?.full_name}</p>
                       <p className="truncate text-[12px] text-muted-foreground">
                         {r.profiles?.phone ?? t('No mobile')}
-                        {r.profiles?.must_change_password && <span className="text-warning"> · {t('has not set their own PIN yet')}</span>}
+                        {r.profiles?.must_change_password && (
+                          <span className="text-warning"> · {t('has not set their own PIN yet')}</span>
+                        )}
                       </p>
                     </div>
-                    {r.role !== 'resident' && <Badge variant={r.role === 'super_admin' ? 'default' : 'info'}>{roleLabel(r.role)}</Badge>}
+                    {r.role !== 'resident' && (
+                      <Badge variant={r.role === 'super_admin' ? 'default' : 'info'}>
+                        {roleLabel(r.role)}
+                      </Badge>
+                    )}
                     <DropdownMenu>
-                      <DropdownMenuTrigger className="grid size-10 cursor-pointer place-items-center rounded-full hover:bg-muted" aria-label={t('Actions for {{n}}', { n: r.units?.code ?? r.profiles?.full_name })}>
+                      <DropdownMenuTrigger
+                        className="grid size-10 cursor-pointer place-items-center rounded-full hover:bg-muted"
+                        aria-label={t('Actions for {{n}}', { n: r.units?.code ?? r.profiles?.full_name })}
+                      >
                         <MoreVertical className="size-5" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -197,9 +267,10 @@ export default function MembersPage() {
                         <DropdownMenuItem onSelect={() => void forceSignOut(r)}>
                           <LogOut /> {t('Sign out all devices')}
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setRoleFor(r)}>
+                        {/* Change role disabled: flat-owner and admin roles are not changed from here. */}
+                        {/* <DropdownMenuItem onSelect={() => setRoleFor(r)}>
                           <ShieldCheck /> {t('Change role')}
-                        </DropdownMenuItem>
+                        </DropdownMenuItem> */}
                         {m.isSuperAdmin && r.role !== 'super_admin' && r.user_id !== m.userId && (
                           <DropdownMenuItem onSelect={() => setViewFor(r)}>
                             <Eye /> {t('View as this member')}
@@ -220,25 +291,44 @@ export default function MembersPage() {
 
         <TabsContent value="logins">
           <Alert variant="info" className="mb-3">
-            {t('Each flat gets one login. Username = flat code. A unique 6-digit temporary PIN is shown once on printable slips; members must set their own PIN at first sign-in.')}
+            {t(
+              'Each flat gets one login. Username = flat code. A unique 6-digit temporary PIN is shown once on printable slips; members must set their own PIN at first sign-in.',
+            )}
           </Alert>
           {needLogin.length === 0 ? (
             <EmptyState title={t('Every flat has a login')} />
           ) : (
             <>
               <label className="mb-2 flex cursor-pointer items-center gap-2 px-1 text-sm font-semibold">
-                <Checkbox checked={allSelected} onCheckedChange={() => setSelected(allSelected ? [] : needLogin.map((u) => u.id))} />
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={() => setSelected(allSelected ? [] : needLogin.map((u) => u.id))}
+                />
                 {t('Select all ({{n}})', { n: needLogin.length })}
               </label>
               <Card className="grid grid-cols-3 gap-1.5 p-2 sm:grid-cols-4">
                 {needLogin.map((u) => (
-                  <label key={u.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl px-2 hover:bg-muted">
-                    <Checkbox checked={selected.includes(u.id)} onCheckedChange={() => setSelected((s) => (s.includes(u.id) ? s.filter((x) => x !== u.id) : [...s, u.id]))} />
+                  <label
+                    key={u.id}
+                    className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl px-2 hover:bg-muted"
+                  >
+                    <Checkbox
+                      checked={selected.includes(u.id)}
+                      onCheckedChange={() =>
+                        setSelected((s) => (s.includes(u.id) ? s.filter((x) => x !== u.id) : [...s, u.id]))
+                      }
+                    />
                     <span className="tabular text-[13px] font-semibold">{u.code}</span>
                   </label>
                 ))}
               </Card>
-              <Button className="mt-3 w-full" size="lg" onClick={bulkCreate} loading={busy} disabled={!selected.length}>
+              <Button
+                className="mt-3 w-full"
+                size="lg"
+                onClick={bulkCreate}
+                loading={busy}
+                disabled={!selected.length}
+              >
                 <KeyRound /> {t('Create {{n}} logins', { n: selected.length })}
               </Button>
             </>
@@ -260,7 +350,11 @@ export default function MembersPage() {
                     <p className="text-[12.5px] text-muted-foreground">
                       {r.profiles?.phone} · {formatDateTime(r.created_at)}
                     </p>
-                    {taken && <p className="mt-1 text-[12.5px] font-semibold text-warning">{t('This flat already has an active login. Approving will replace it.')}</p>}
+                    {taken && (
+                      <p className="mt-1 text-[12.5px] font-semibold text-warning">
+                        {t('This flat already has an active login. Approving will replace it.')}
+                      </p>
+                    )}
                     <div className="mt-3 flex gap-2">
                       <Button size="sm" onClick={() => setApproveFor(r)}>
                         <Check /> {t('Approve')}
@@ -294,17 +388,42 @@ export default function MembersPage() {
         </TabsContent>
       </Tabs>
 
-      {slips && <SlipsDialog slips={slips} society={m.society_name} slug={m.society_slug} onClose={() => setSlips(null)} />}
+      {slips && (
+        <SlipsDialog
+          slips={slips}
+          society={m.society_name}
+          slug={m.society_slug}
+          onClose={() => setSlips(null)}
+        />
+      )}
       {edit && <EditMember row={edit} onClose={() => (setEdit(null), refresh())} />}
-      {roleFor && <RoleDialog row={roleFor} canSuper={m.isSuperAdmin} onClose={() => (setRoleFor(null), refresh())} />}
+      {roleFor && (
+        <RoleDialog row={roleFor} canSuper={m.isSuperAdmin} onClose={() => (setRoleFor(null), refresh())} />
+      )}
       {deact && <DeactivateDialog row={deact} onClose={() => (setDeact(null), refresh())} />}
-      {staffOpen && <StaffDialog canSuper={m.isSuperAdmin} onClose={() => setStaffOpen(false)} onSlip={(s) => (setSlips([s]), refresh())} />}
-      {approveFor && <ApproveDialog row={approveFor} replace={rows.some((x) => x.status === 'active' && x.unit_id === approveFor.unit_id)} onClose={() => (setApproveFor(null), refresh())} />}
+      {staffOpen && (
+        <StaffDialog
+          canSuper={m.isSuperAdmin}
+          onClose={() => setStaffOpen(false)}
+          onSlip={(s) => (setSlips([s]), refresh())}
+        />
+      )}
+      {approveFor && (
+        <ApproveDialog
+          row={approveFor}
+          replace={rows.some((x) => x.status === 'active' && x.unit_id === approveFor.unit_id)}
+          onClose={() => (setApproveFor(null), refresh())}
+        />
+      )}
       <ConfirmSheet
         open={!!confirmReset}
         onOpenChange={(o) => !o && setConfirmReset(null)}
-        title={t('Reset PIN for {{u}}?', { u: confirmReset?.units?.code ?? confirmReset?.profiles?.full_name ?? '' })}
-        description={t('A new temporary PIN is created and all their devices are signed out. They must set their own PIN at next sign-in.')}
+        title={t('Reset PIN for {{u}}?', {
+          u: confirmReset?.units?.code ?? confirmReset?.profiles?.full_name ?? '',
+        })}
+        description={t(
+          'A new temporary PIN is created and all their devices are signed out. They must set their own PIN at next sign-in.',
+        )}
         confirmLabel={t('Reset PIN')}
         destructive
         loading={busy}
@@ -314,7 +433,9 @@ export default function MembersPage() {
         open={!!viewFor}
         onOpenChange={(o) => !o && !busy && setViewFor(null)}
         title={t('View as {{u}}?', { u: viewFor?.units?.code ?? viewFor?.profiles?.full_name ?? '' })}
-        description={t('You will see the app exactly as they see it, read only. Nothing can be changed. This is recorded in the audit log.')}
+        description={t(
+          'You will see the app exactly as they see it, read only. Nothing can be changed. This is recorded in the audit log.',
+        )}
         confirmLabel={t('View as this member')}
         loading={busy}
         onConfirm={() => viewFor && void openViewAs(viewFor)}
@@ -323,15 +444,59 @@ export default function MembersPage() {
   );
 }
 
-function SlipsDialog({ slips, society, slug, onClose }: { slips: Slip[]; society: string; slug: string; onClose: () => void }) {
+function SlipsDialog({
+  slips,
+  society,
+  slug,
+  onClose,
+}: {
+  slips: Slip[];
+  society: string;
+  slug: string;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const [ack, setAck] = useState(false);
   const url = window.location.origin;
+
+  const slipFileText = (s: Slip) =>
+    `${brand.name} — ${society}\n` +
+    `${'='.repeat(brand.name.length + society.length + 3)}\n\n` +
+    `Flat: ${s.unit_code ?? ''}${s.display_name ? ` (${s.display_name})` : ''}\n\n` +
+    `STEP 1 — Open this link in your phone or computer's browser:\n${url}\n\n` +
+    `STEP 2 — Enter your username:\n${s.username}\n\n` +
+    `STEP 3 — Enter your temporary PIN:\n${s.password}\n` +
+    `(You will be asked to set your own PIN the first time you log in. Keep it private — do not share this file with anyone else.)\n\n` +
+    `STEP 4 — Install the app on your Home Screen (optional but recommended):\n` +
+    `  • Android (Chrome): tap the menu (⋮) → "Install app" / "Add to Home screen"\n` +
+    `  • iPhone: open the link above in Safari (not Chrome) → tap the Share icon → "Add to Home Screen"\n` +
+    `  The app also shows an "Install app" button on the Home screen and Profile page once you are logged in.\n`;
+
+  const safeFileName = (s: Slip) =>
+    `${(s.unit_code || s.username).replace(/[^a-zA-Z0-9-]+/g, '-')}-login.txt`;
+
+  const downloadZip = () => {
+    const seen = new Set<string>();
+    const files = slips.map((s) => {
+      let name = safeFileName(s);
+      while (seen.has(name)) name = name.replace(/\.txt$/, `-${s.username}.txt`);
+      seen.add(name);
+      return { name, content: slipFileText(s) };
+    });
+    const blob = buildZip(files);
+    downloadBlob(`${slug}-login-slips.zip`, blob);
+  };
+
   const printSlips = () => {
     const w = window.open('', '_blank', 'width=800,height=900');
     if (!w) return toast.error(t('Allow pop-ups to print the slips.'));
-    const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(brand.name)} credential slips</title>
+    const esc = (s: string) =>
+      s.replace(
+        /[&<>"']/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
+      );
+    w.document
+      .write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(brand.name)} credential slips</title>
 <style>body{font-family:system-ui,sans-serif;margin:16px;color:#0b1f19}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .slip{border:2px dashed #059669;border-radius:12px;padding:12px;break-inside:avoid}.b{color:#047857;font-weight:800}.pw{font:700 20px ui-monospace,monospace;letter-spacing:1px;background:#ecfdf5;padding:6px 8px;border-radius:8px;display:inline-block}
 small{color:#456}</style></head><body><div class="grid">${slips
@@ -352,7 +517,9 @@ small{color:#456}</style></head><body><div class="grid">${slips
           <DialogTitle>{t('Credential slips')}</DialogTitle>
         </DialogHeader>
         <Alert variant="warning" className="mb-3">
-          {t('These PINs are shown only once and are never stored in readable form. Print or note them now and hand each slip over individually.')}
+          {t(
+            'These PINs are shown only once and are never stored in readable form. Print or note them now and hand each slip over individually.',
+          )}
         </Alert>
         <div className="grid max-h-[45dvh] gap-2 overflow-y-auto">
           {slips.map((s) => (
@@ -363,15 +530,23 @@ small{color:#456}</style></head><body><div class="grid">${slips
               <p className="text-sm">
                 {t('Username')}: <strong className="tabular">{s.username}</strong>
               </p>
-              <p className="tabular mt-1 inline-block select-all rounded-lg bg-secondary px-2 py-1 font-mono text-lg font-bold tracking-wider">{s.password}</p>
+              <p className="tabular mt-1 inline-block select-all rounded-lg bg-secondary px-2 py-1 font-mono text-lg font-bold tracking-wider">
+                {s.password}
+              </p>
             </div>
           ))}
         </div>
-        <Button variant="outline" className="mt-3 w-full" onClick={printSlips}>
-          <Printer /> {t('Print slips')}
-        </Button>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Button variant="outline" className="w-full px-2 text-[13px]" onClick={printSlips}>
+            <Printer className="shrink-0" /> <span className="min-w-0 truncate">{t('Print')}</span>
+          </Button>
+          <Button variant="outline" className="w-full px-2 text-[13px]" onClick={downloadZip}>
+            <Download className="shrink-0" /> <span className="min-w-0 truncate">{t('Download (.zip)')}</span>
+          </Button>
+        </div>
         <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm">
-          <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} /> {t('I have saved or printed these PINs')}
+          <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} />{' '}
+          {t('I have saved or printed these PINs')}
         </label>
         <DialogFooter>
           <Button onClick={onClose} disabled={!ack}>
@@ -393,7 +568,11 @@ function EditMember({ row, onClose }: { row: Row; onClose: () => void }) {
     if (p && !MOBILE_RE.test(p)) return toast.error(t('Enter a valid 10-digit Indian mobile number'));
     setBusy(true);
     try {
-      await rpc('admin_update_member_profile', { p_membership_id: row.id, p_full_name: name.trim(), p_phone: p });
+      await rpc('admin_update_member_profile', {
+        p_membership_id: row.id,
+        p_full_name: name.trim(),
+        p_phone: p,
+      });
       toast.success(t('Saved'));
       onClose();
     } catch (e) {
@@ -454,9 +633,13 @@ function RoleDialog({ row, canSuper, onClose }: { row: Row; canSuper: boolean; o
         <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role)}>
           {row.unit_id && <option value="resident">{t('Resident')}</option>}
           <option value="admin">{t('Admin')}</option>
-          {(canSuper || row.role === 'super_admin') && <option value="super_admin">{t('Super admin')}</option>}
+          {(canSuper || row.role === 'super_admin') && (
+            <option value="super_admin">{t('Super admin')}</option>
+          )}
         </NativeSelect>
-        <p className="mt-2 text-[12.5px] text-muted-foreground">{t('Role changes are highlighted in the audit log. There must always be at least one super admin.')}</p>
+        <p className="mt-2 text-[12.5px] text-muted-foreground">
+          {t('Role changes are highlighted in the audit log. There must always be at least one super admin.')}
+        </p>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             {t('Cancel')}
@@ -491,14 +674,21 @@ function DeactivateDialog({ row, onClose }: { row: Row; onClose: () => void }) {
       open
       onOpenChange={(o) => !o && onClose()}
       title={t('Deactivate {{u}}?', { u: row.units?.code ?? row.profiles?.full_name ?? '' })}
-      description={t('They lose access immediately and their devices are signed out. The flat can then get a new login.')}
+      description={t(
+        'They lose access immediately and their devices are signed out. The flat can then get a new login.',
+      )}
       confirmLabel={t('Deactivate')}
       destructive
       loading={busy}
       onConfirm={go}
     >
       <Field label={t('Reason')}>
-        <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder={t('e.g. flat sold')} />
+        <Input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          maxLength={300}
+          placeholder={t('e.g. flat sold')}
+        />
       </Field>
     </ConfirmSheet>
   );
@@ -511,7 +701,12 @@ function ApproveDialog({ row, replace, onClose }: { row: Row; replace: boolean; 
     setBusy(true);
     try {
       await invokeFn('admin-users', { action: 'approve_registration', membership_id: row.id, replace });
-      toast.success(t('Approved. {{n}} can now sign in as {{u}}.', { n: row.profiles?.full_name ?? '', u: row.units?.code ?? '' }));
+      toast.success(
+        t('Approved. {{n}} can now sign in as {{u}}.', {
+          n: row.profiles?.full_name ?? '',
+          u: row.units?.code ?? '',
+        }),
+      );
       onClose();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -524,7 +719,11 @@ function ApproveDialog({ row, replace, onClose }: { row: Row; replace: boolean; 
       open
       onOpenChange={(o) => !o && onClose()}
       title={t('Approve {{n}} for {{u}}?', { n: row.profiles?.full_name ?? '', u: row.units?.code ?? '' })}
-      description={replace ? t('The current login of this flat will be deactivated and signed out.') : t('They will sign in with the flat code and the PIN they chose.')}
+      description={
+        replace
+          ? t('The current login of this flat will be deactivated and signed out.')
+          : t('They will sign in with the flat code and the PIN they chose.')
+      }
       rows={[
         { label: t('Mobile'), value: row.profiles?.phone ?? '' },
         { label: t('Requested'), value: formatDateTime(row.created_at) },
@@ -537,7 +736,15 @@ function ApproveDialog({ row, replace, onClose }: { row: Row; replace: boolean; 
   );
 }
 
-function StaffDialog({ canSuper, onClose, onSlip }: { canSuper: boolean; onClose: () => void; onSlip: (s: Slip) => void }) {
+function StaffDialog({
+  canSuper,
+  onClose,
+  onSlip,
+}: {
+  canSuper: boolean;
+  onClose: () => void;
+  onSlip: (s: Slip) => void;
+}) {
   const { t } = useTranslation();
   const m = useMember();
   const [username, setUsername] = useState('');
@@ -545,7 +752,10 @@ function StaffDialog({ canSuper, onClose, onSlip }: { canSuper: boolean; onClose
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'admin' | 'super_admin'>('admin');
   const [busy, setBusy] = useState(false);
-  const valid = useMemo(() => /^[a-zA-Z][a-zA-Z0-9-]{1,39}$/.test(username) && name.trim().length >= 2, [username, name]);
+  const valid = useMemo(
+    () => /^[a-zA-Z][a-zA-Z0-9-]{1,39}$/.test(username) && name.trim().length >= 2,
+    [username, name],
+  );
   const go = async () => {
     const p = phone.trim() ? normalizeMobile(phone) : null;
     if (p && !MOBILE_RE.test(p)) return toast.error(t('Enter a valid 10-digit Indian mobile number'));
@@ -575,7 +785,12 @@ function StaffDialog({ canSuper, onClose, onSlip }: { canSuper: boolean; onClose
         </DialogHeader>
         <div className="space-y-3">
           <Field label={t('Username')} hint={t('Letters, digits, dashes — e.g. rohit-admin')}>
-            <Input value={username} maxLength={40} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} autoCapitalize="none" />
+            <Input
+              value={username}
+              maxLength={40}
+              onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))}
+              autoCapitalize="none"
+            />
           </Field>
           <Field label={t('Full name')}>
             <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />

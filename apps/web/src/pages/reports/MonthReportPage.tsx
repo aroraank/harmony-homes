@@ -16,8 +16,8 @@ import {
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { invalidateMoney, useExpenseCategories, useSettings } from '@/lib/queries';
-import { downloadCsv, rupees } from '@/lib/csv';
-import { pdfINR, reportPdf, shareOrDownloadPdf } from '@/lib/pdf';
+import { downloadCsv, rupees, downloadBlob } from '@/lib/csv';
+import { pdfINR, reportPdf } from '@/lib/pdf';
 import { categoryLabel, MODE_LABELS, shareText } from '@/lib/utils';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { MonthChips } from '@/components/MonthChips';
@@ -221,7 +221,7 @@ export default function MonthReportPage() {
           },
         },
       ]);
-      await shareOrDownloadPdf(blob, `month-${period}.pdf`);
+      downloadBlob(`month-${period}.pdf`, blob);
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -424,7 +424,7 @@ export default function MonthReportPage() {
                     className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/50"
                   >
                     <span className="tabular w-16 font-semibold">{p.unit_code}</span>
-                    <span className="flex-1 truncate text-[12.5px] text-muted-foreground">
+                    <span className="flex-1 break-words text-[12.5px] text-muted-foreground">
                       {formatDate(p.date)} · {MODE_LABELS[p.mode] ?? p.mode}
                       {p.category === 'event_contribution' ? ` · ${p.fund}` : ''}
                     </span>
@@ -442,7 +442,7 @@ export default function MonthReportPage() {
                 {r.expenses.map((x) => (
                   <div key={x.entry_id} className="flex items-center gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">
+                      <p className="break-words text-sm font-semibold">
                         {x.payee || categoryLabel(x.category, cats.data)}
                       </p>
                       <p className="text-[12px] text-muted-foreground">

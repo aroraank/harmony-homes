@@ -25,7 +25,13 @@ export default function DuesAdminPage() {
   const m = useMember();
   const qc = useQueryClient();
   const settings = useSettings(m.societyId);
-  const periods = useMemo(() => (settings.data ? periodsBetween(settings.data.start_month, currentPeriod()).reverse() : [currentPeriod()]), [settings.data]);
+  const periods = useMemo(
+    () =>
+      settings.data
+        ? periodsBetween(settings.data.start_month, currentPeriod()).reverse()
+        : [currentPeriod()],
+    [settings.data],
+  );
   const [period, setPeriod] = useState(currentPeriod());
   const [gen, setGen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -34,13 +40,29 @@ export default function DuesAdminPage() {
 
   const closings = useQuery({
     queryKey: ['closings', m.societyId],
-    queryFn: async () => unwrap<{ period: string; closed_at: string; reopened_at: string | null }[]>(await supabase.from('month_closings').select('period, closed_at, reopened_at').eq('society_id', m.societyId).order('closed_at', { ascending: false })),
+    queryFn: async () =>
+      unwrap<{ period: string; closed_at: string; reopened_at: string | null }[]>(
+        await supabase
+          .from('month_closings')
+          .select('period, closed_at, reopened_at')
+          .eq('society_id', m.societyId)
+          .order('closed_at', { ascending: false }),
+      ),
   });
   const closed = new Set((closings.data ?? []).filter((c) => !c.reopened_at).map((c) => c.period));
 
   const dues = useQuery({
     queryKey: ['duesAdmin', m.societyId, period],
-    queryFn: async () => unwrap<DueRow[]>(await supabase.from('v_dues').select('*').eq('society_id', m.societyId).eq('period', period).eq('due_type', 'monthly').order('unit_code')),
+    queryFn: async () =>
+      unwrap<DueRow[]>(
+        await supabase
+          .from('v_dues')
+          .select('*')
+          .eq('society_id', m.societyId)
+          .eq('period', period)
+          .eq('due_type', 'monthly')
+          .order('unit_code'),
+      ),
   });
 
   if (!m.can('generate_dues')) return <EmptyState title={t('You do not have permission to do this.')} />;
@@ -48,8 +70,15 @@ export default function DuesAdminPage() {
   const generate = async () => {
     setBusy(true);
     try {
-      const r = await rpc<{ created: number }>('generate_monthly_dues', { p_society: m.societyId, p_period: period });
-      toast.success(r.created ? t('{{n}} dues created for {{m}}', { n: r.created, m: periodLabel(period) }) : t('Dues for {{m}} already exist — nothing duplicated', { m: periodLabel(period) }));
+      const r = await rpc<{ created: number }>('generate_monthly_dues', {
+        p_society: m.societyId,
+        p_period: period,
+      });
+      toast.success(
+        r.created
+          ? t('{{n}} dues created for {{m}}', { n: r.created, m: periodLabel(period) })
+          : t('Dues for {{m}} already exist — nothing duplicated', { m: periodLabel(period) }),
+      );
       invalidateMoney(qc);
       nudgePush();
       setGen(false);
@@ -92,7 +121,9 @@ export default function DuesAdminPage() {
           </NativeSelect>
         </Field>
         <p className="text-[12.5px] text-muted-foreground">
-          {t('Dues are created automatically on the 1st. Generating again never duplicates — it only adds missing flats and uses any advance credit.')}
+          {t(
+            'Dues are created automatically on the 1st. Generating again never duplicates — it only adds missing flats and uses any advance credit.',
+          )}
         </p>
         <div className="grid grid-cols-2 gap-2">
           <Button onClick={() => setGen(true)} disabled={closed.has(period)}>
@@ -107,7 +138,14 @@ export default function DuesAdminPage() {
       </Card>
 
       <SectionTitle>{t('{{m}} dues', { m: periodLabel(period) })}</SectionTitle>
-      <QueryState query={dues} empty={(d) => (d.length ? null : <EmptyState title={t('No dues for this month yet')} hint={t('Tap “Generate dues”.')} />)}>
+      <QueryState
+        query={dues}
+        empty={(d) =>
+          d.length ? null : (
+            <EmptyState title={t('No dues for this month yet')} hint={t('Tap “Generate dues”.')} />
+          )
+        }
+      >
         {(list) => (
           <>
             <p className="mb-2 px-1 text-[12.5px] text-muted-foreground">
@@ -115,7 +153,13 @@ export default function DuesAdminPage() {
             </p>
             <Card className="divide-y">
               {list.map((d) => {
-                const st: UnitStatus = d.waived ? 'waived' : d.pending_paise === 0 ? 'paid' : d.paid_paise > 0 ? 'partial' : 'pending';
+                const st: UnitStatus = d.waived
+                  ? 'waived'
+                  : d.pending_paise === 0
+                    ? 'paid'
+                    : d.paid_paise > 0
+                      ? 'partial'
+                      : 'pending';
                 return (
                   <div key={d.id} className="flex items-center gap-3 px-4 py-2.5">
                     <Link to={`/reports/unit/${d.unit_id}`} className="tabular w-16 font-bold">
@@ -123,11 +167,18 @@ export default function DuesAdminPage() {
                     </Link>
                     <div className="min-w-0 flex-1">
                       <StatusChip status={st} />
-                      {d.waived && d.waived_reason && <p className="truncate text-[11.5px] text-muted-foreground">{d.waived_reason}</p>}
+                      {d.waived && d.waived_reason && (
+                        <p className="break-words text-[11.5px] text-muted-foreground">{d.waived_reason}</p>
+                      )}
                     </div>
                     <span className="tabular text-sm font-semibold">{formatINR(d.amount_paise)}</span>
                     {st === 'pending' && !closed.has(period) ? (
-                      <Button variant="ghost" size="icon-sm" onClick={() => setWaive(d)} aria-label={t('Waive')}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setWaive(d)}
+                        aria-label={t('Waive')}
+                      >
                         <Slash />
                       </Button>
                     ) : (
@@ -143,14 +194,24 @@ export default function DuesAdminPage() {
 
       <SectionTitle>{t('Closed months')}</SectionTitle>
       {(closings.data ?? []).length === 0 ? (
-        <p className="px-1 text-sm text-muted-foreground">{t('No months closed yet. Close a month from its Month view once the books match the bank.')}</p>
+        <p className="px-1 text-sm text-muted-foreground">
+          {t('No months closed yet. Close a month from its Month view once the books match the bank.')}
+        </p>
       ) : (
         <Card className="divide-y">
           {(closings.data ?? []).map((c, i) => (
-            <Link key={i} to={`/reports/month/${c.period}`} className="flex items-center justify-between px-4 py-3 hover:bg-secondary/50">
+            <Link
+              key={i}
+              to={`/reports/month/${c.period}`}
+              className="flex items-center justify-between px-4 py-3 hover:bg-secondary/50"
+            >
               <span className="font-semibold">{periodLabel(c.period)}</span>
               <span className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
-                {c.reopened_at ? <Badge variant="warning">{t('Reopened')}</Badge> : <Badge variant="muted">{t('Closed')}</Badge>}
+                {c.reopened_at ? (
+                  <Badge variant="warning">{t('Reopened')}</Badge>
+                ) : (
+                  <Badge variant="muted">{t('Closed')}</Badge>
+                )}
                 {formatDate(c.closed_at)}
                 <ChevronRight className="size-4" />
               </span>
@@ -163,7 +224,9 @@ export default function DuesAdminPage() {
         open={gen}
         onOpenChange={setGen}
         title={t('Generate dues for {{m}}?', { m: periodLabel(period) })}
-        description={t('Creates the monthly due for every billable flat that does not have one yet, and notifies members.')}
+        description={t(
+          'Creates the monthly due for every billable flat that does not have one yet, and notifies members.',
+        )}
         confirmLabel={t('Generate dues')}
         loading={busy}
         onConfirm={generate}
@@ -179,7 +242,12 @@ export default function DuesAdminPage() {
         onConfirm={doWaive}
       >
         <Field label={t('Reason')}>
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder={t('e.g. flat vacant, approved in meeting')} />
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={300}
+            placeholder={t('e.g. flat vacant, approved in meeting')}
+          />
         </Field>
       </ConfirmSheet>
     </div>

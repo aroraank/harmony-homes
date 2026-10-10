@@ -25,12 +25,28 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 
 type Hist = { amount_paise: number; from: string; reason: string | null; at: string };
 type Series = {
-  id: string; title: string; description: string | null; scope_type: 'all' | 'unit_types'; due_day: number; due_month_offset: number; is_active: boolean;
-  total_cost_paise: number; pending_total_paise: number | null; pending_from_period: string | null; this_month_event_id: string | null; history: Hist[];
+  id: string;
+  title: string;
+  description: string | null;
+  scope_type: 'all' | 'unit_types';
+  due_day: number;
+  due_month_offset: number;
+  is_active: boolean;
+  total_cost_paise: number;
+  pending_total_paise: number | null;
+  pending_from_period: string | null;
+  this_month_event_id: string | null;
+  history: Hist[];
 };
 type Expense = {
-  id: string; title: string; day_of_month: number; is_active: boolean; amount_paise: number;
-  pending_amount_paise: number | null; pending_from_period: string | null; history: Hist[];
+  id: string;
+  title: string;
+  day_of_month: number;
+  is_active: boolean;
+  amount_paise: number;
+  pending_amount_paise: number | null;
+  pending_from_period: string | null;
+  history: Hist[];
 };
 type Overview = { series: Series[]; expenses: Expense[] };
 
@@ -45,7 +61,9 @@ function History({ rows }: { rows: Hist[] }) {
   if (rows.length === 0) return null;
   return (
     <details className="mt-2 text-[12.5px]">
-      <summary className="cursor-pointer font-semibold text-primary">{t('History ({{n}})', { n: rows.length })}</summary>
+      <summary className="cursor-pointer font-semibold text-primary">
+        {t('History ({{n}})', { n: rows.length })}
+      </summary>
       <ul className="mt-1.5 space-y-1.5">
         {rows.map((h, i) => (
           <li key={i} className="rounded-lg bg-secondary/60 px-3 py-2">
@@ -71,7 +89,10 @@ export default function RecurringPage() {
   const canEvents = m.can('manage_events');
   const canExp = m.can('record_expense');
 
-  const q = useQuery({ queryKey: ['recurring', m.societyId], queryFn: () => rpc<Overview>('recurring_overview', { p_society: m.societyId }) });
+  const q = useQuery({
+    queryKey: ['recurring', m.societyId],
+    queryFn: () => rpc<Overview>('recurring_overview', { p_society: m.societyId }),
+  });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['recurring'] });
     void qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -81,15 +102,32 @@ export default function RecurringPage() {
     nudgePush();
   };
 
-  const [change, setChange] = useState<{ kind: 'series' | 'expense'; id: string; title: string; paise: number } | null>(null);
+  const [change, setChange] = useState<{
+    kind: 'series' | 'expense';
+    id: string;
+    title: string;
+    paise: number;
+  } | null>(null);
   const [edit, setEdit] = useState<Series | null>(null);
   const [create, setCreate] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const submitChange = async (paise: number, mode: AmountMode, reason: string) => {
     if (!change) return;
-    if (change.kind === 'series') await rpc('change_series_amount', { p_series: change.id, p_total_cost_paise: paise, p_mode: mode, p_reason: reason });
-    else await rpc('change_template_amount', { p_template: change.id, p_amount_paise: paise, p_mode: mode, p_reason: reason });
+    if (change.kind === 'series')
+      await rpc('change_series_amount', {
+        p_series: change.id,
+        p_total_cost_paise: paise,
+        p_mode: mode,
+        p_reason: reason,
+      });
+    else
+      await rpc('change_template_amount', {
+        p_template: change.id,
+        p_amount_paise: paise,
+        p_mode: mode,
+        p_reason: reason,
+      });
     toast.success(t('Saved. Everyone has been notified.'));
     refresh();
   };
@@ -109,42 +147,80 @@ export default function RecurringPage() {
 
   return (
     <div className="animate-fade-up">
-      <PageHeader title={t('Recurring')} subtitle={t('Monthly collections and fixed expenses, with their history')} back="/events" />
+      <PageHeader
+        title={t('Recurring')}
+        subtitle={t('Monthly collections and fixed expenses, with their history')}
+        back="/events"
+      />
 
-      <SectionTitle action={canEvents ? <Button size="sm" variant="outline" onClick={() => setCreate(true)}><Plus /> {t('New')}</Button> : undefined}>
+      <SectionTitle
+        action={
+          canEvents ? (
+            <Button size="sm" variant="outline" onClick={() => setCreate(true)}>
+              <Plus /> {t('New')}
+            </Button>
+          ) : undefined
+        }
+      >
         {t('Recurring events')}
       </SectionTitle>
       <QueryState query={q} empty={() => null}>
         {(d) =>
           d.series.length === 0 ? (
-            <EmptyState icon={<Repeat className="size-7" />} title={t('No recurring events')} hint={t('A recurring event is published automatically on the 1st of every month, named with the month and year.')} />
+            <EmptyState
+              icon={<Repeat className="size-7" />}
+              title={t('No recurring events')}
+              hint={t(
+                'A recurring event is published automatically on the 1st of every month, named with the month and year.',
+              )}
+            />
           ) : (
             <div className="space-y-2.5">
               {d.series.map((s) => (
                 <Card key={s.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-bold">{s.title}</p>
+                      <p className="break-words font-bold">{s.title}</p>
                       <p className="text-[12.5px] text-muted-foreground">
-                        <span className="tabular font-semibold text-foreground">{formatINR(s.total_cost_paise)}</span> {t('a month')} · {s.due_month_offset === 1 ? t('due by day {{d}} of next month', { d: s.due_day }) : t('due by day {{d}}', { d: s.due_day })}
+                        <span className="tabular font-semibold text-foreground">
+                          {formatINR(s.total_cost_paise)}
+                        </span>{' '}
+                        {t('a month')} ·{' '}
+                        {s.due_month_offset === 1
+                          ? t('due by day {{d}} of next month', { d: s.due_day })
+                          : t('due by day {{d}}', { d: s.due_day })}
                       </p>
                     </div>
-                    <Badge variant={s.is_active ? 'success' : 'muted'}>{s.is_active ? t('Auto every month') : t('Paused')}</Badge>
+                    <Badge variant={s.is_active ? 'success' : 'muted'}>
+                      {s.is_active ? t('Auto every month') : t('Paused')}
+                    </Badge>
                   </div>
                   {s.pending_total_paise && s.pending_from_period && (
                     <p className="mt-2 rounded-lg bg-amber-100 px-3 py-1.5 text-[12.5px] font-semibold text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
-                      {t('From {{m}}: {{a}}', { m: periodLabel(s.pending_from_period), a: formatINR(s.pending_total_paise) })}
+                      {t('From {{m}}: {{a}}', {
+                        m: periodLabel(s.pending_from_period),
+                        a: formatINR(s.pending_total_paise),
+                      })}
                     </p>
                   )}
                   {s.this_month_event_id && (
-                    <Link to={`/events/${s.this_month_event_id}`} className="mt-2 flex items-center justify-between text-[13px] font-semibold text-primary">
+                    <Link
+                      to={`/events/${s.this_month_event_id}`}
+                      className="mt-2 flex items-center justify-between text-[13px] font-semibold text-primary"
+                    >
                       {t('This month’s event')} <ChevronRight className="size-4" />
                     </Link>
                   )}
                   <History rows={s.history} />
                   {canEvents && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setChange({ kind: 'series', id: s.id, title: s.title, paise: s.total_cost_paise })}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setChange({ kind: 'series', id: s.id, title: s.title, paise: s.total_cost_paise })
+                        }
+                      >
                         <SlidersHorizontal /> {t('Change amount')}
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setEdit(s)}>
@@ -176,22 +252,33 @@ export default function RecurringPage() {
                   <div className="flex items-start gap-3">
                     <CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-bold">
+                      <p className="break-words font-bold">
                         {x.title} {!x.is_active && <Badge variant="muted">{t('Paused')}</Badge>}
                       </p>
-                      <p className="text-[12.5px] text-muted-foreground">{t('Around day {{d}} of every month', { d: x.day_of_month })}</p>
+                      <p className="text-[12.5px] text-muted-foreground">
+                        {t('Around day {{d}} of every month', { d: x.day_of_month })}
+                      </p>
                     </div>
                     <span className="tabular font-bold">{formatINR(x.amount_paise)}</span>
                   </div>
                   {x.pending_amount_paise && x.pending_from_period && (
                     <p className="mt-2 rounded-lg bg-amber-100 px-3 py-1.5 text-[12.5px] font-semibold text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
-                      {t('From {{m}}: {{a}}', { m: periodLabel(x.pending_from_period), a: formatINR(x.pending_amount_paise) })}
+                      {t('From {{m}}: {{a}}', {
+                        m: periodLabel(x.pending_from_period),
+                        a: formatINR(x.pending_amount_paise),
+                      })}
                     </p>
                   )}
                   <History rows={x.history} />
                   {canExp && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setChange({ kind: 'expense', id: x.id, title: x.title, paise: x.amount_paise })}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setChange({ kind: 'expense', id: x.id, title: x.title, paise: x.amount_paise })
+                        }
+                      >
                         <SlidersHorizontal /> {t('Change amount')}
                       </Button>
                       <Button size="sm" variant="outline" asChild>
@@ -217,13 +304,31 @@ export default function RecurringPage() {
         nextPeriod={next}
         onSubmit={submitChange}
       />
-      <SeriesCreateDialog open={create} onClose={() => setCreate(false)} types={types.data ?? []} societyId={m.societyId} onDone={refresh} />
+      <SeriesCreateDialog
+        open={create}
+        onClose={() => setCreate(false)}
+        types={types.data ?? []}
+        societyId={m.societyId}
+        onDone={refresh}
+      />
       <SeriesEditDialog series={edit} onClose={() => setEdit(null)} onDone={refresh} />
     </div>
   );
 }
 
-function SeriesCreateDialog({ open, onClose, types, societyId, onDone }: { open: boolean; onClose: () => void; types: { id: string; name: string }[]; societyId: string; onDone: () => void }) {
+function SeriesCreateDialog({
+  open,
+  onClose,
+  types,
+  societyId,
+  onDone,
+}: {
+  open: boolean;
+  onClose: () => void;
+  types: { id: string; name: string }[];
+  societyId: string;
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
@@ -243,11 +348,19 @@ function SeriesCreateDialog({ open, onClose, types, societyId, onDone }: { open:
     setBusy(true);
     try {
       await rpc('create_event_series', {
-        p_society: societyId, p_title: title, p_description: null, p_total_cost_paise: paise, p_scope_type: scope,
-        p_unit_type_ids: scope === 'unit_types' ? ids : [], p_due_day: d, p_publish_now: now, p_due_month_offset: nextMonth ? 1 : 0,
+        p_society: societyId,
+        p_title: title,
+        p_description: null,
+        p_total_cost_paise: paise,
+        p_scope_type: scope,
+        p_unit_type_ids: scope === 'unit_types' ? ids : [],
+        p_due_day: d,
+        p_publish_now: now,
+        p_due_month_offset: nextMonth ? 1 : 0,
       });
       toast.success(t('Saved. Everyone has been notified.'));
-      setTitle(''); setAmount('');
+      setTitle('');
+      setAmount('');
       onClose();
       onDone();
     } catch (e) {
@@ -263,8 +376,18 @@ function SeriesCreateDialog({ open, onClose, types, societyId, onDone }: { open:
           <DialogTitle>{t('New recurring event')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <Field label={t('Name')} hint={t('The month and year are added automatically, e.g. “{{n}} – November 2026”.', { n: title.trim() || t('Security guard salary') })}>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder={t('Security guard salary')} />
+          <Field
+            label={t('Name')}
+            hint={t('The month and year are added automatically, e.g. “{{n}} – November 2026”.', {
+              n: title.trim() || t('Security guard salary'),
+            })}
+          >
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={80}
+              placeholder={t('Security guard salary')}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label={t('Total for the month')}>
@@ -275,20 +398,37 @@ function SeriesCreateDialog({ open, onClose, types, societyId, onDone }: { open:
             </Field>
           </div>
           <label className="flex min-h-11 cursor-pointer items-center justify-between">
-            <span className="text-sm font-semibold">{t('Due in the following month (e.g. September’s share due on 7 October)')}</span>
+            <span className="text-sm font-semibold">
+              {t('Due in the following month (e.g. September’s share due on 7 October)')}
+            </span>
             <Switch checked={nextMonth} onCheckedChange={setNextMonth} />
           </label>
           <div className="flex gap-2">
             {(['all', 'unit_types'] as const).map((k) => (
-              <Button key={k} type="button" size="sm" variant={scope === k ? 'default' : 'outline'} onClick={() => setScope(k)}>
+              <Button
+                key={k}
+                type="button"
+                size="sm"
+                variant={scope === k ? 'default' : 'outline'}
+                onClick={() => setScope(k)}
+              >
                 {k === 'all' ? t('All flats') : t('Only some flat types')}
               </Button>
             ))}
           </div>
           {scope === 'unit_types' &&
             types.map((ut) => (
-              <label key={ut.id} className="flex min-h-10 cursor-pointer items-center gap-3 text-sm font-semibold">
-                <Checkbox checked={ids.includes(ut.id)} onCheckedChange={(v) => setIds((l) => (v === true ? [...l, ut.id] : l.filter((x) => x !== ut.id)))} /> {ut.name}
+              <label
+                key={ut.id}
+                className="flex min-h-10 cursor-pointer items-center gap-3 text-sm font-semibold"
+              >
+                <Checkbox
+                  checked={ids.includes(ut.id)}
+                  onCheckedChange={(v) =>
+                    setIds((l) => (v === true ? [...l, ut.id] : l.filter((x) => x !== ut.id)))
+                  }
+                />{' '}
+                {ut.name}
               </label>
             ))}
           <label className="flex min-h-11 cursor-pointer items-center justify-between">
@@ -297,15 +437,27 @@ function SeriesCreateDialog({ open, onClose, types, societyId, onDone }: { open:
           </label>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>{t('Cancel')}</Button>
-          <Button onClick={save} loading={busy}>{t('Create')}</Button>
+          <Button variant="outline" onClick={onClose}>
+            {t('Cancel')}
+          </Button>
+          <Button onClick={save} loading={busy}>
+            {t('Create')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; onClose: () => void; onDone: () => void }) {
+function SeriesEditDialog({
+  series,
+  onClose,
+  onDone,
+}: {
+  series: Series | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -329,7 +481,14 @@ function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; 
     if (!(d >= 1 && d <= 28)) return toast.error(t('Day must be between 1 and 28.'));
     setBusy(true);
     try {
-      await rpc('update_event_series', { p_series: series.id, p_title: title, p_description: desc || null, p_due_day: d, p_is_active: active, p_due_month_offset: nextMonth ? 1 : 0 });
+      await rpc('update_event_series', {
+        p_series: series.id,
+        p_title: title,
+        p_description: desc || null,
+        p_due_day: d,
+        p_is_active: active,
+        p_due_month_offset: nextMonth ? 1 : 0,
+      });
       toast.success(t('Saved. Everyone has been notified.'));
       setLoaded(null);
       onClose();
@@ -341,7 +500,15 @@ function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; 
     }
   };
   return (
-    <Dialog open={!!series} onOpenChange={(o) => { if (!o) { setLoaded(null); onClose(); } }}>
+    <Dialog
+      open={!!series}
+      onOpenChange={(o) => {
+        if (!o) {
+          setLoaded(null);
+          onClose();
+        }
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('Edit recurring event')}</DialogTitle>
@@ -354,7 +521,9 @@ function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; 
             <IntInput max={28} value={day} onChange={(e) => setDay(e.target.value)} />
           </Field>
           <label className="flex min-h-11 cursor-pointer items-center justify-between">
-            <span className="text-sm font-semibold">{t('Due in the following month (e.g. September’s share due on 7 October)')}</span>
+            <span className="text-sm font-semibold">
+              {t('Due in the following month (e.g. September’s share due on 7 October)')}
+            </span>
             <Switch checked={nextMonth} onCheckedChange={setNextMonth} />
           </label>
           <Field label={t('Description')} optional>
@@ -366,8 +535,18 @@ function SeriesEditDialog({ series, onClose, onDone }: { series: Series | null; 
           </label>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { setLoaded(null); onClose(); }}>{t('Cancel')}</Button>
-          <Button onClick={save} loading={busy}>{t('Save')}</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setLoaded(null);
+              onClose();
+            }}
+          >
+            {t('Cancel')}
+          </Button>
+          <Button onClick={save} loading={busy}>
+            {t('Save')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

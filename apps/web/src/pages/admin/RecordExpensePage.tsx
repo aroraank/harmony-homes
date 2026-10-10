@@ -1,10 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Plus, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
-import { addDays, formatDate, formatINR, istToday, normalizeUtr, paiseToInput, parseRupeesToPaise, UTR_RE } from '@harmony/shared';
+import {
+  addDays,
+  formatDate,
+  formatINR,
+  istToday,
+  normalizeUtr,
+  paiseToInput,
+  parseRupeesToPaise,
+  UTR_RE,
+} from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { AppError, errorMessage, newIdemKey, rpc, supabase } from '@/lib/supabase';
 import { invalidateMoney, unwrap, useDashboard, useExpenseCategories, useFunds } from '@/lib/queries';
@@ -23,7 +32,19 @@ import { Alert } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/States';
 
-type Draft = { id: string; period: string; amount_paise: number; status: string; expense_templates: { title: string; fund_id: string; category: string; payee: string | null; payment_mode: string | null } };
+type Draft = {
+  id: string;
+  period: string;
+  amount_paise: number;
+  status: string;
+  expense_templates: {
+    title: string;
+    fund_id: string;
+    category: string;
+    payee: string | null;
+    payment_mode: string | null;
+  };
+};
 
 export default function RecordExpensePage() {
   const { t } = useTranslation();
@@ -44,7 +65,15 @@ export default function RecordExpensePage() {
     queryKey: ['draft', draftId],
     enabled: !!draftId,
     queryFn: async () =>
-      unwrap<Draft>(await supabase.from('expense_drafts').select('id, period, amount_paise, status, expense_templates(title, fund_id, category, payee, payment_mode)').eq('id', draftId!).single()),
+      unwrap<Draft>(
+        await supabase
+          .from('expense_drafts')
+          .select(
+            'id, period, amount_paise, status, expense_templates(title, fund_id, category, payee, payment_mode)',
+          )
+          .eq('id', draftId!)
+          .single(),
+      ),
   });
 
   const [fundId, setFundId] = useState(params.get('fund') ?? '');
@@ -64,16 +93,26 @@ export default function RecordExpensePage() {
   const [idem, setIdem] = useState(() => newIdemKey('exp'));
   const [newCat, setNewCat] = useState<{ open: boolean; label: string }>({ open: false, label: '' });
 
+  // Initialize the form from the draft exactly once (keyed by draft id) — funds/dashboard data
+  // may arrive a tick after the draft itself, but must not re-run this once the admin starts editing.
+  const initedFor = useRef<string | null>(null);
   useEffect(() => {
     const d = draft.data;
-    if (!d) return;
-    setFundId(d.expense_templates.fund_id);
+    if (!d || !funds.data || !dash.data || initedFor.current === d.id) return;
+    initedFor.current = d.id;
+    const matching = funds.data.filter(
+      (f) => f.is_active && f.kind === 'event' && f.name.startsWith(d.expense_templates.title),
+    );
+    const bestMatch = matching
+      .map((f) => ({ f, balance: dash.data!.funds.find((df) => df.id === f.id)?.balance_paise ?? 0 }))
+      .sort((a, b) => b.balance - a.balance)[0];
+    setFundId(bestMatch && bestMatch.balance > 0 ? bestMatch.f.id : d.expense_templates.fund_id);
     setCategory(d.expense_templates.category);
     setPayee(d.expense_templates.payee ?? '');
     setAmount(paiseToInput(d.amount_paise));
     if (d.expense_templates.payment_mode) setMode(d.expense_templates.payment_mode);
     setNote(`${d.expense_templates.title} — ${d.period}`);
-  }, [draft.data]);
+  }, [draft.data, funds.data, dash.data]);
 
   useEffect(() => setIdem(newIdemKey('exp')), [fundId, category, payee, amount, date, mode, ref]);
 
@@ -81,8 +120,34 @@ export default function RecordExpensePage() {
 
   const activeFunds = (funds.data ?? []).filter((f) => f.is_active);
   const fund = activeFunds.find((f) => f.id === fundId) ?? activeFunds.find((f) => f.kind === 'general');
+
+  // "Security guard salary" is the one expense that's genuinely fungible across its own monthly
+  // collection funds (and General, if needed) — everything else is money collected for one specific
+  // event (often scoped to just 2BHK or just 3BHK flats), so it must be paid only from that event's
+  // own fund, with no other option offered at all.
+  const SECURITY_GUARD_TITLE = 'Security guard salary';
+  const isGuardFund = (name: string) => name.startsWith(SECURITY_GUARD_TITLE);
+  const fundParam = params.get('fund');
+  const paramFund = fundParam ? activeFunds.find((f) => f.id === fundParam) : undefined;
+  const flexibleTitle = draft.data
+    ? draft.data.expense_templates.title
+    : paramFund && isGuardFund(paramFund.name)
+      ? SECURITY_GUARD_TITLE
+      : undefined;
+  // A specific, non-guard event fund reached via "Record expense" on that event's page: locked, no
+  // dropdown at all — the admin cannot even see other funds to pick from by mistake.
+  const lockedFund = !draft.data && paramFund && !isGuardFund(paramFund.name) ? paramFund : undefined;
+
+  const fundOptions = flexibleTitle
+    ? [...activeFunds]
+        .filter((f) => f.kind !== 'general')
+        .sort((a, b) => (a.id === fundId ? -1 : b.id === fundId ? 1 : 0))
+        .concat(activeFunds.filter((f) => f.kind === 'general'))
+        .map((f) => ({ fund: f, disabled: f.id !== fundId && f.kind !== 'general' }))
+    : activeFunds.map((f) => ({ fund: f, disabled: false }));
   const paise = parseRupeesToPaise(amount);
   const needsReason = date < addDays(istToday(), -30);
+  const draftAmountDiffers = !!draft.data && paise !== null && paise !== draft.data.amount_paise;
   const fundBalance = dash.data?.funds.find((f) => f.id === fund?.id)?.balance_paise;
   const goesNegative = paise && fundBalance !== undefined && fundBalance - paise < 0;
 
@@ -94,7 +159,16 @@ export default function RecordExpensePage() {
     if (!date || date > istToday()) e.date = t('Date cannot be in the future');
     const r = normalizeUtr(ref);
     if (r && !UTR_RE.test(r)) e.ref = t('UTR / reference must be 6–30 letters or digits');
-    if (needsReason && backdateReason.trim().length < 5) e.reason = t('Entries dated more than 30 days ago need a reason (at least 5 characters).');
+    if (needsReason && backdateReason.trim().length < 5)
+      e.reason = t('Entries dated more than 30 days ago need a reason (at least 5 characters).');
+    if (draftAmountDiffers && note.trim().length < 5) {
+      e.note = t(
+        'This is different from the usual {{a}}. Add a reason (at least 5 characters) — members will see it.',
+        {
+          a: formatINR(draft.data!.amount_paise),
+        },
+      );
+    }
     setErrors(e);
     return !Object.keys(e).length;
   };
@@ -141,7 +215,11 @@ export default function RecordExpensePage() {
 
   const addCategory = async () => {
     const label = newCat.label.trim();
-    const code = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
+    const code = label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 30);
     if (!/^[a-z][a-z0-9_]{1,30}$/.test(code)) return toast.error(t('Use a name that starts with a letter.'));
     try {
       await rpc('upsert_expense_category', { p_society: m.societyId, p_code: code, p_label: label });
@@ -165,19 +243,47 @@ export default function RecordExpensePage() {
 
   return (
     <div className="animate-fade-up">
-      <PageHeader title={draftId ? t('Confirm recurring expense') : t('Record expense')} subtitle={t('Money paid out of society funds')} back />
-      {draft.data && draft.data.status !== 'pending' && <Alert variant="warning" className="mb-3">{t('This draft was already handled.')}</Alert>}
+      <PageHeader
+        title={draftId ? t('Confirm recurring expense') : t('Record expense')}
+        subtitle={t('Money paid out of society funds')}
+        back
+      />
+      {draft.data && draft.data.status !== 'pending' && (
+        <Alert variant="warning" className="mb-3">
+          {t('This draft was already handled.')}
+        </Alert>
+      )}
       <Card className="space-y-4 p-4">
-        {activeFunds.length > 1 && (
-          <Field label={t('Paid from fund')} error={errors.fund}>
-            <NativeSelect value={fund?.id ?? ''} onChange={(e) => setFundId(e.target.value)}>
-              {activeFunds.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </NativeSelect>
+        {lockedFund ? (
+          <Field
+            label={t('Paid from fund')}
+            hint={t('This expense belongs to this event, so its fund is fixed and cannot be changed here.')}
+          >
+            <div className="flex h-11 items-center rounded-xl border bg-secondary px-3.5 text-sm font-semibold">
+              {lockedFund.name}
+            </div>
           </Field>
+        ) : (
+          activeFunds.length > 1 && (
+            <Field
+              label={t('Paid from fund')}
+              error={errors.fund}
+              hint={
+                flexibleTitle
+                  ? t('Other funds are locked for this payment to avoid a costly mistake.')
+                  : undefined
+              }
+            >
+              <NativeSelect value={fund?.id ?? ''} onChange={(e) => setFundId(e.target.value)}>
+                {fundOptions.map(({ fund: f, disabled }) => (
+                  <option key={f.id} value={f.id} disabled={disabled}>
+                    {f.name}
+                    {disabled ? ` (${t('not used for this')})` : ''}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+          )
         )}
         <Field label={t('Category')} error={errors.category}>
           <div className="flex gap-2">
@@ -191,30 +297,53 @@ export default function RecordExpensePage() {
                 ))}
               </NativeSelect>
             </div>
-            <Button type="button" variant="outline" size="icon" onClick={() => setNewCat({ open: true, label: '' })} aria-label={t('Add category')}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => setNewCat({ open: true, label: '' })}
+              aria-label={t('Add category')}
+            >
               <Plus />
             </Button>
           </div>
         </Field>
         <Field label={t('Paid to')} optional>
-          <Input value={payee} onChange={(e) => setPayee(e.target.value)} list="payee-list" maxLength={120} placeholder={t('e.g. Security guard, PSPCL')} />
+          <Input
+            value={payee}
+            onChange={(e) => setPayee(e.target.value)}
+            list="payee-list"
+            maxLength={120}
+            placeholder={t('e.g. Security guard, PSPCL')}
+          />
         </Field>
         <datalist id="payee-list">
-          {payees.data?.map((p) => <option key={p.payee} value={p.payee} />)}
+          {payees.data?.map((p) => (
+            <option key={p.payee} value={p.payee} />
+          ))}
         </datalist>
         <Field label={t('Amount')} error={errors.amount}>
           <div className="relative">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">₹</span>
-            <AmountInput value={amount} onChange={(e) => setAmount(e.target.value)} className="tabular pl-8 text-xl font-bold" />
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">
+              ₹
+            </span>
+            <AmountInput
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="tabular pl-8 text-xl font-bold"
+            />
           </div>
         </Field>
         {goesNegative && (
           <Alert variant="warning">
             <AlertTriangle />
-            {t('This takes {{f}} below zero (balance {{b}}). Check the amount, or move money into this fund first.', {
-              f: fund?.name ?? '',
-              b: formatINR(fundBalance ?? 0),
-            })}
+            {t(
+              'This takes {{f}} below zero (balance {{b}}). Check the amount, or move money into this fund first.',
+              {
+                f: fund?.name ?? '',
+                b: formatINR(fundBalance ?? 0),
+              },
+            )}
           </Alert>
         )}
         <div className="grid grid-cols-2 gap-3">
@@ -233,25 +362,78 @@ export default function RecordExpensePage() {
         </div>
         {needsReason && (
           <Field label={t('Why is this backdated?')} error={errors.reason}>
-            <Input value={backdateReason} onChange={(e) => setBackdateReason(e.target.value)} maxLength={200} />
+            <Input
+              value={backdateReason}
+              onChange={(e) => setBackdateReason(e.target.value)}
+              maxLength={200}
+            />
           </Field>
         )}
         <Field label={t('UTR / reference')} optional error={errors.ref}>
-          <Input value={ref} onChange={(e) => setRef(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 30))} autoCapitalize="characters" />
+          <Input
+            value={ref}
+            onChange={(e) =>
+              setRef(
+                e.target.value
+                  .replace(/[^a-z0-9]/gi, '')
+                  .toUpperCase()
+                  .slice(0, 30),
+              )
+            }
+            autoCapitalize="characters"
+          />
         </Field>
         <Field label={t('Bill photo')} optional>
           <FileInput value={file} onChange={setFile} label={t('Add bill photo or PDF')} />
         </Field>
-        <Field label={t('Note')} optional>
+        <Field
+          label={draftAmountDiffers ? t('Reason for the different amount') : t('Note')}
+          optional={!draftAmountDiffers}
+          error={errors.note}
+        >
           <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
+          {draftAmountDiffers && (
+            <p className="mt-1 text-[12px] text-muted-foreground">
+              {t('Usually {{a}}. This reason is shown to every member.', {
+                a: formatINR(draft.data!.amount_paise),
+              })}
+            </p>
+          )}
         </Field>
-        <Button size="xl" variant="hero" className="w-full" disabled={!online || (draftId != null && draft.data?.status !== 'pending' && !!draft.data)} onClick={() => validate() && setConfirm(true)}>
+        <Button
+          size="xl"
+          variant="hero"
+          className="w-full"
+          disabled={!online || (draftId != null && draft.data?.status !== 'pending' && !!draft.data)}
+          onClick={() => validate() && setConfirm(true)}
+        >
           <Receipt /> {t('Review and save')}
         </Button>
       </Card>
 
-      <ConfirmSheet open={confirm} onOpenChange={setConfirm} title={t('Save this expense?')} description={t('Once saved it cannot be edited — only reversed with a reason.')} rows={summary} confirmLabel={t('Save expense')} loading={saving} onConfirm={() => save(false)} />
-      <ConfirmSheet open={dupConfirm} onOpenChange={setDupConfirm} title={t('Duplicate UTR')} description={t('This reference already exists in the ledger. Record anyway only if it is a different payment.')} rows={summary} confirmLabel={t('Record anyway')} destructive loading={saving} onConfirm={() => save(true)} />
+      <ConfirmSheet
+        open={confirm}
+        onOpenChange={setConfirm}
+        title={t('Save this expense?')}
+        description={t('Once saved it cannot be edited — only reversed with a reason.')}
+        rows={summary}
+        confirmLabel={t('Save expense')}
+        loading={saving}
+        onConfirm={() => save(false)}
+      />
+      <ConfirmSheet
+        open={dupConfirm}
+        onOpenChange={setDupConfirm}
+        title={t('Duplicate UTR')}
+        description={t(
+          'This reference already exists in the ledger. Record anyway only if it is a different payment.',
+        )}
+        rows={summary}
+        confirmLabel={t('Record anyway')}
+        destructive
+        loading={saving}
+        onConfirm={() => save(true)}
+      />
 
       <Dialog open={newCat.open} onOpenChange={(o) => setNewCat((s) => ({ ...s, open: o }))}>
         <DialogContent>
@@ -259,7 +441,12 @@ export default function RecordExpensePage() {
             <DialogTitle>{t('New expense category')}</DialogTitle>
           </DialogHeader>
           <Field label={t('Name')}>
-            <Input value={newCat.label} onChange={(e) => setNewCat((s) => ({ ...s, label: e.target.value }))} maxLength={40} placeholder={t('e.g. Garden maintenance')} />
+            <Input
+              value={newCat.label}
+              onChange={(e) => setNewCat((s) => ({ ...s, label: e.target.value }))}
+              maxLength={40}
+              placeholder={t('e.g. Garden maintenance')}
+            />
           </Field>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewCat({ open: false, label: '' })}>

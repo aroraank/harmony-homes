@@ -24,7 +24,9 @@ export function PageHeader({
       {back && (
         <button
           type="button"
-          onClick={() => (typeof back === 'string' ? nav(back) : window.history.length > 1 ? nav(-1) : nav('/'))}
+          onClick={() =>
+            typeof back === 'string' ? nav(back) : window.history.length > 1 ? nav(-1) : nav('/')
+          }
           className="-ml-2 grid size-11 shrink-0 cursor-pointer place-items-center rounded-full hover:bg-secondary"
           aria-label={t('Back')}
         >
@@ -32,8 +34,8 @@ export function PageHeader({
         </button>
       )}
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-[22px] font-extrabold leading-tight tracking-tight">{title}</h1>
-        {subtitle && <p className="truncate text-[13px] text-muted-foreground">{subtitle}</p>}
+        <h1 className="break-words text-[22px] font-extrabold leading-tight tracking-tight">{title}</h1>
+        {subtitle && <p className="break-words text-[13px] text-muted-foreground">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
     </div>

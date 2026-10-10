@@ -8,7 +8,7 @@ import { amountInWords, formatDate, formatDateTime, formatINR, periodLabel } fro
 import { useMember } from '@/lib/auth';
 import { errorMessage, supabase } from '@/lib/supabase';
 import { unwrap } from '@/lib/queries';
-import { MODE_LABELS, cn } from '@/lib/utils';
+import { MODE_LABELS, cn, unitLabel } from '@/lib/utils';
 import { receiptPdf, shareOrDownloadPdf, type ReceiptData } from '@/lib/pdf';
 import { downloadBlob } from '@/lib/csv';
 import { brand } from '@/brand';
@@ -17,7 +17,10 @@ import { CardSkeleton, ErrorState } from '@/components/States';
 import { Button } from '@/components/ui/button';
 import type { LedgerRow } from '@/types';
 
-type Alloc = { amount_paise: number; dues: { period: string | null; due_type: string; events: { title: string } | null } | null };
+type Alloc = {
+  amount_paise: number;
+  dues: { period: string | null; due_type: string; events: { title: string } | null } | null;
+};
 
 export default function ReceiptPage() {
   const { t } = useTranslation();
@@ -29,9 +32,14 @@ export default function ReceiptPage() {
     queryKey: ['receipt', entryId],
     enabled: !!entryId,
     queryFn: async () => {
-      const entry = unwrap<LedgerRow>(await supabase.from('v_ledger').select('*').eq('id', entryId!).single());
+      const entry = unwrap<LedgerRow>(
+        await supabase.from('v_ledger').select('*').eq('id', entryId!).single(),
+      );
       const allocs = unwrap<Alloc[]>(
-        await supabase.from('due_allocations').select('amount_paise, dues(period, due_type, events(title))').eq('ledger_entry_id', entryId!),
+        await supabase
+          .from('due_allocations')
+          .select('amount_paise, dues(period, due_type, events(title))')
+          .eq('ledger_entry_id', entryId!),
       );
       let memberName: string | null = null;
       if (entry.unit_id) {
@@ -42,7 +50,9 @@ export default function ReceiptPage() {
           .eq('status', 'active')
           .limit(1)
           .maybeSingle();
-        memberName = (mem.data as unknown as { profiles: { full_name: string } | null } | null)?.profiles?.full_name ?? null;
+        memberName =
+          (mem.data as unknown as { profiles: { full_name: string } | null } | null)?.profiles?.full_name ??
+          null;
       }
       return { entry, allocs, memberName };
     },
@@ -54,17 +64,21 @@ export default function ReceiptPage() {
   if (!e.receipt_no) return <ErrorState error={new Error(t('No receipt for this entry.'))} />;
 
   const covers = allocs.map((a) => ({
-    label: a.dues?.due_type === 'monthly' && a.dues.period ? periodLabel(a.dues.period) : (a.dues?.events?.title ?? t('Dues')),
+    label:
+      a.dues?.due_type === 'monthly' && a.dues.period
+        ? periodLabel(a.dues.period)
+        : (a.dues?.events?.title ?? t('Dues')),
     amount_paise: a.amount_paise,
   }));
   const allocated = covers.reduce((s, c) => s + c.amount_paise, 0);
-  if (allocated < e.amount_paise && !e.is_reversed) covers.push({ label: t('Advance'), amount_paise: e.amount_paise - allocated });
+  if (allocated < e.amount_paise && !e.is_reversed)
+    covers.push({ label: t('Advance'), amount_paise: e.amount_paise - allocated });
 
   const data: ReceiptData = {
     societyName: m.society_name,
     receiptNo: e.receipt_no,
     date: e.entry_date,
-    unitCode: e.unit_code ?? '',
+    unitCode: unitLabel(e.unit_code),
     memberName,
     amountPaise: e.amount_paise,
     covers,
@@ -84,7 +98,12 @@ export default function ReceiptPage() {
     try {
       const blob = await receiptPdf(data);
       if (kind === 'pdf') downloadBlob(filename, blob);
-      else await shareOrDownloadPdf(blob, filename, `${brand.name} receipt ${e.receipt_no} — ${formatINR(e.amount_paise)} for ${e.unit_code}`);
+      else
+        await shareOrDownloadPdf(
+          blob,
+          filename,
+          `${brand.name} receipt ${e.receipt_no} — ${formatINR(e.amount_paise)} for ${unitLabel(e.unit_code)}`,
+        );
     } catch (err) {
       toast.error(errorMessage(err));
     } finally {
@@ -100,7 +119,7 @@ export default function ReceiptPage() {
           <img src={brand.logo} alt="" className="size-10 rounded-xl ring-1 ring-white/30" />
           <div className="min-w-0 flex-1">
             <p className="font-extrabold">{brand.name}</p>
-            <p className="truncate text-[12.5px] text-white/85">{m.society_name}</p>
+            <p className="break-words text-[12.5px] text-white/85">{m.society_name}</p>
           </div>
           <div className="text-right">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">{t('Receipt')}</p>
@@ -109,12 +128,14 @@ export default function ReceiptPage() {
         </div>
         <div className={cn('p-5', e.is_reversed && 'opacity-70')}>
           <p className="text-[12.5px] text-muted-foreground">{t('Amount received')}</p>
-          <p className="tabular text-4xl font-extrabold tracking-tight text-credit">{formatINR(e.amount_paise)}</p>
+          <p className="tabular text-4xl font-extrabold tracking-tight text-credit">
+            {formatINR(e.amount_paise)}
+          </p>
           <p className="mt-1 text-[12.5px] italic text-muted-foreground">{amountInWords(e.amount_paise)}</p>
           <dl className="mt-4 divide-y rounded-2xl border text-sm">
             {[
               [t('Date'), formatDate(e.entry_date)],
-              [t('Flat'), e.unit_code],
+              [t('Flat'), unitLabel(e.unit_code)],
               [t('Received from'), memberName],
               [t('Towards'), covers.map((c) => `${c.label} ${formatINR(c.amount_paise)}`).join(', ')],
               [t('Mode'), data.mode],
@@ -131,14 +152,19 @@ export default function ReceiptPage() {
               ))}
           </dl>
           <p className="mt-3 flex items-center gap-2 text-[12.5px] text-muted-foreground">
-            <ShieldCheck className="size-4 text-primary" /> {t('Verify code')}: <span className="tabular font-bold text-foreground">{e.receipt_token}</span>
+            <ShieldCheck className="size-4 text-primary" /> {t('Verify code')}:{' '}
+            <span className="tabular font-bold text-foreground">{e.receipt_token}</span>
           </p>
         </div>
         {e.is_reversed && (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
             <div className="-rotate-[20deg] rounded-xl border-4 border-destructive px-5 py-2 text-center text-3xl font-black tracking-widest text-destructive">
               {t('CANCELLED')}
-              {data.cancelReason && <p className="mt-1 max-w-[16rem] text-xs font-semibold tracking-normal">{data.cancelReason}</p>}
+              {data.cancelReason && (
+                <p className="mt-1 max-w-[16rem] text-xs font-semibold tracking-normal">
+                  {data.cancelReason}
+                </p>
+              )}
             </div>
           </div>
         )}

@@ -25,7 +25,13 @@ export default function EventsPage() {
   const [kind, setKind] = useState<'all' | 'recurring' | 'one'>('all');
   const ov = useQuery({
     queryKey: ['eventsOverview', m.societyId, year, month],
-    queryFn: () => rpc<Overview>('events_overview', { p_society: m.societyId, p_year: year ? Number(year) : null, p_month: month ? Number(month) : null, p_limit: 200 }),
+    queryFn: () =>
+      rpc<Overview>('events_overview', {
+        p_society: m.societyId,
+        p_year: year ? Number(year) : null,
+        p_month: month ? Number(month) : null,
+        p_limit: 200,
+      }),
   });
   const years = [...new Set((ov.data?.periods ?? []).map((p) => p.slice(0, 4)))];
   const byId = new Map((ov.data?.events ?? []).map((e) => [e.id, e]));
@@ -73,9 +79,19 @@ export default function EventsPage() {
         </NativeSelect>
       </div>
       <div className="mb-3 flex gap-2">
-        {([['all', 'All events'], ['recurring', 'Recurring'], ['one', 'One-time']] as const).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setKind(k)}
-            className={`rounded-full border px-3.5 py-1.5 text-[13px] font-bold ${kind === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}>
+        {(
+          [
+            ['all', 'All events'],
+            ['recurring', 'Recurring'],
+            ['one', 'One-time'],
+          ] as const
+        ).map(([k, l]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setKind(k)}
+            className={`rounded-full border px-3.5 py-1.5 text-[13px] font-bold ${kind === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-card text-muted-foreground'}`}
+          >
             {t(l)}
           </button>
         ))}
@@ -94,9 +110,13 @@ export default function EventsPage() {
       >
         {(all) => {
           const base = filtered ? all.filter((e) => byId.has(e.id)) : all;
-          const isRec = (id: string) => !!(byId.get(id) as { series_id?: string | null } | undefined)?.series_id;
+          const isRec = (id: string) =>
+            !!(byId.get(id) as { series_id?: string | null } | undefined)?.series_id;
           const events = kind === 'all' ? base : base.filter((e) => (kind === 'recurring') === isRec(e.id));
-          if (events.length === 0) return <EmptyState icon={<CalendarHeart className="size-7" />} title={t('No events in this month')} />;
+          if (events.length === 0)
+            return (
+              <EmptyState icon={<CalendarHeart className="size-7" />} title={t('No events in this month')} />
+            );
           const groups: [string, EventRow[]][] = [
             [t('Open'), events.filter((e) => e.status === 'open')],
             [t('Drafts'), events.filter((e) => e.status === 'draft')],
@@ -110,22 +130,43 @@ export default function EventsPage() {
                 <div className="space-y-2.5">
                   {list.map((e) => {
                     const c = collected(e.id);
-                    const pct = c !== undefined ? Math.min(100, Math.round((c / Math.max(1, e.total_cost_paise)) * 100)) : null;
+                    const pct =
+                      c !== undefined
+                        ? Math.min(100, Math.round((c / Math.max(1, e.total_cost_paise)) * 100))
+                        : null;
                     return (
-                      <Link key={e.id} to={`/events/${e.id}`} className="block rounded-2xl border bg-card p-4 shadow-card transition-colors hover:bg-secondary/50">
+                      <Link
+                        key={e.id}
+                        to={`/events/${e.id}`}
+                        className="block rounded-2xl border bg-card p-4 shadow-card transition-colors hover:bg-secondary/50"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="truncate font-bold">{e.title}</p>
+                            <p className="break-words font-bold">{e.title}</p>
                             {(byId.get(e.id) as { series_id?: string | null } | undefined)?.series_id && (
-                              <span className="mb-0.5 inline-block rounded-full bg-lime-100 px-2 py-px text-[10.5px] font-bold uppercase text-lime-800 dark:bg-lime-500/15 dark:text-lime-300">{t('Recurring')}</span>
+                              <span className="mb-0.5 inline-block rounded-full bg-lime-100 px-2 py-px text-[10.5px] font-bold uppercase text-lime-800 dark:bg-lime-500/15 dark:text-lime-300">
+                                {t('Recurring')}
+                              </span>
                             )}
                             <p className="text-[12.5px] text-muted-foreground">
-                              {formatINR(e.total_cost_paise)} · {t('{{n}} flats × {{a}}', { n: e.expected_count, a: formatINR(e.per_unit_share_paise) })}
+                              {formatINR(e.total_cost_paise)} ·{' '}
+                              {t('{{n}} flats × {{a}}', {
+                                n: e.expected_count,
+                                a: formatINR(e.per_unit_share_paise),
+                              })}
                             </p>
-                            <p className="text-[12px] text-muted-foreground">{t('Due {{d}}', { d: formatDate(e.due_date) })}</p>
+                            <p className="text-[12px] text-muted-foreground">
+                              {t('Due {{d}}', { d: formatDate(e.due_date) })}
+                            </p>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Badge variant={e.status === 'open' ? 'success' : e.status === 'draft' ? 'warning' : 'muted'}>{t(e.status === 'open' ? 'Open' : e.status === 'draft' ? 'Draft' : 'Closed')}</Badge>
+                            <Badge
+                              variant={
+                                e.status === 'open' ? 'success' : e.status === 'draft' ? 'warning' : 'muted'
+                              }
+                            >
+                              {t(e.status === 'open' ? 'Open' : e.status === 'draft' ? 'Draft' : 'Closed')}
+                            </Badge>
                             <ChevronRight className="size-4 text-muted-foreground" />
                           </div>
                         </div>
@@ -136,7 +177,10 @@ export default function EventsPage() {
                         )}
                         {pct !== null && (
                           <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                            <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400" style={{ width: `${pct}%` }} />
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400"
+                              style={{ width: `${pct}%` }}
+                            />
                           </div>
                         )}
                       </Link>

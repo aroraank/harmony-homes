@@ -1,7 +1,17 @@
 import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Bell, CalendarHeart, Eye, Home, LayoutGrid, Megaphone, ScrollText, WalletCards, WifiOff } from 'lucide-react';
+import {
+  Bell,
+  CalendarHeart,
+  Eye,
+  Home,
+  LayoutGrid,
+  Megaphone,
+  ScrollText,
+  WalletCards,
+  WifiOff,
+} from 'lucide-react';
 import { useAuth, useMember } from '@/lib/auth';
 import { useDashboard, useNotifications } from '@/lib/queries';
 import { useOnline } from '@/lib/online';
@@ -12,6 +22,7 @@ import { stopViewAs } from '@/lib/viewAs';
 import { brand } from '@/brand';
 import { cn } from '@/lib/utils';
 import { NoticeGate } from './NoticeGate';
+import { WelcomeDialog } from '../WelcomeDialog';
 import { CreditLine } from '../CreditLine';
 import { AdminFab } from './AdminFab';
 import { ListSkeleton } from '../States';
@@ -45,7 +56,7 @@ export function AppShell() {
     { to: '/', label: t('Home'), Icon: Home, end: true },
     { to: '/dues', label: t('Dues'), Icon: WalletCards },
     { to: '/ledger', label: t('Ledger'), Icon: ScrollText },
-    { to: '/events', label: t('Events'), Icon: CalendarHeart },
+    { to: '/meetings', label: t('Meetings'), Icon: CalendarHeart },
     { to: '/notices', label: t('Notices'), Icon: Megaphone, badge: dash.data?.unacked_notices ?? 0 },
   ];
 
@@ -54,7 +65,13 @@ export function AppShell() {
       <header className="hero-gradient safe-top sticky top-0 z-30 text-white shadow-md">
         <div className="flex h-14 items-center gap-2.5 px-4">
           <Link to="/" className="flex min-w-0 flex-1 items-center gap-2.5" aria-label={brand.name}>
-            <img src={brand.logo} alt="" className="size-8 rounded-[10px] ring-1 ring-white/30" width={32} height={32} />
+            <img
+              src={brand.logo}
+              alt=""
+              className="size-8 rounded-[10px] ring-1 ring-white/30"
+              width={32}
+              height={32}
+            />
             <div className="min-w-0 leading-tight">
               <div className="text-[15px] font-extrabold tracking-tight">{brand.name}</div>
               <div className="truncate text-[11.5px] font-medium text-white/80">
@@ -85,12 +102,19 @@ export function AppShell() {
               </span>
             )}
           </Link>
-          <Link to="/more" className="grid size-11 place-items-center rounded-full hover:bg-white/15" aria-label={t('Menu')}>
+          <Link
+            to="/more"
+            className="grid size-11 place-items-center rounded-full hover:bg-white/15"
+            aria-label={t('Menu')}
+          >
             <LayoutGrid className="size-[22px]" />
           </Link>
         </div>
         {viewOnly && (
-          <div className="flex items-center gap-2 bg-amber-300 px-4 py-2 text-[12.5px] font-semibold text-amber-950" role="status">
+          <div
+            className="flex items-center gap-2 bg-amber-300 px-4 py-2 text-[12.5px] font-semibold text-amber-950"
+            role="status"
+          >
             <Eye className="size-4 shrink-0" />
             <span className="min-w-0 flex-1">
               {viewAs ? t('Viewing as {{who}} — read only', { who: viewAs.label }) : t('Read-only session')}
@@ -116,14 +140,16 @@ export function AppShell() {
         )}
       </header>
 
-      <main className="flex-1 px-4 pb-32 pt-4">
+      <main className="flex flex-1 flex-col px-4 pb-32 pt-4">
         <Suspense fallback={<ListSkeleton rows={4} />}>
           <Outlet />
         </Suspense>
-        <CreditLine className="mt-10" />
+        <CreditLine className="mt-auto pt-10" />
       </main>
 
-      {m.isAdmin && !viewOnly && ['/', '/dues', '/ledger', '/events', '/notices'].includes(loc.pathname) && <AdminFab />}
+      {m.isAdmin &&
+        !viewOnly &&
+        ['/', '/dues', '/ledger', '/meetings', '/notices'].includes(loc.pathname) && <AdminFab />}
 
       <nav
         aria-label={t('Main')}
@@ -166,6 +192,7 @@ export function AppShell() {
         </ul>
       </nav>
 
+      {!viewOnly && <WelcomeDialog />}
       {!viewOnly && <NoticeGate />}
     </div>
   );

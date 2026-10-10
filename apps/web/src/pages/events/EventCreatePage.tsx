@@ -4,7 +4,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Calculator, CalendarHeart } from 'lucide-react';
 import { toast } from 'sonner';
-import { addDays, formatDate, formatINR, istToday, paiseToInput, parseRupeesToPaise, summariseEventSplit } from '@harmony/shared';
+import {
+  addDays,
+  formatDate,
+  formatINR,
+  istToday,
+  paiseToInput,
+  parseRupeesToPaise,
+  summariseEventSplit,
+} from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { invalidateMoney, useSettings, useUnitTypes, useUnits } from '@/lib/queries';
@@ -57,7 +65,9 @@ export default function EventCreatePage() {
 
   // drop exclusions that fell out of scope
   useEffect(() => {
-    setExcluded((ex) => Object.fromEntries(Object.entries(ex).filter(([id]) => inScope.some((u) => u.id === id))));
+    setExcluded((ex) =>
+      Object.fromEntries(Object.entries(ex).filter(([id]) => inScope.some((u) => u.id === id))),
+    );
   }, [inScope]);
 
   const totalPaise = parseRupeesToPaise(total) ?? 0;
@@ -72,9 +82,11 @@ export default function EventCreatePage() {
     if (!totalPaise) e.total = t('Enter the total estimated cost');
     if (!inScope.length) e.scope = t('No flats are in scope.');
     if (split.expected < 1) e.scope = t('At least one flat must be expected to pay.');
-    if (Object.values(excluded).some((r) => r.trim().length < 2)) e.excluded = t('Give a reason for every excluded flat.');
+    if (Object.values(excluded).some((r) => r.trim().length < 2))
+      e.excluded = t('Give a reason for every excluded flat.');
     if (!dueDate || dueDate < istToday()) e.due = t('Choose a due date from today onwards.');
-    if (roundingPaise < 100 || roundingPaise > 1_000_000) e.rounding = t('Rounding must be between ₹1 and ₹10,000.');
+    if (roundingPaise < 100 || roundingPaise > 1_000_000)
+      e.rounding = t('Rounding must be between ₹1 and ₹10,000.');
     setErrors(e);
     return !Object.keys(e).length;
   };
@@ -106,22 +118,40 @@ export default function EventCreatePage() {
     }
   };
 
-  const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  const toggle = (list: string[], id: string) =>
+    list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 
   return (
     <div className="animate-fade-up">
       <PageHeader title={t('New event')} subtitle={t('Split a special expense among flats')} back="/events" />
       <Card className="space-y-4 p-4">
         <Field label={t('Title')} error={errors.title}>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder={t('e.g. Motor repair — 3BHK')} />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={120}
+            placeholder={t('e.g. Motor repair — 3BHK')}
+          />
         </Field>
         <Field label={t('Description')} optional>
-          <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} />
+          <Textarea
+            rows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={2000}
+          />
         </Field>
         <Field label={t('Total estimated cost')} error={errors.total}>
           <div className="relative">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">₹</span>
-            <AmountInput value={total} onChange={(e) => setTotal(e.target.value)} className="tabular pl-8 text-xl font-bold" placeholder="240000" />
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">
+              ₹
+            </span>
+            <AmountInput
+              value={total}
+              onChange={(e) => setTotal(e.target.value)}
+              className="tabular pl-8 text-xl font-bold"
+              placeholder="240000"
+            />
           </div>
         </Field>
       </Card>
@@ -144,7 +174,9 @@ export default function EventCreatePage() {
               onClick={() => setScope(k)}
               className={cn(
                 'min-h-11 cursor-pointer rounded-xl border px-2 text-[13px] font-semibold transition-colors',
-                scope === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-secondary',
+                scope === k
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'bg-card hover:bg-secondary',
               )}
             >
               {label}
@@ -154,8 +186,14 @@ export default function EventCreatePage() {
         {scope === 'unit_types' && (
           <div className="flex flex-wrap gap-2">
             {types.data?.map((ty) => (
-              <label key={ty.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3">
-                <Checkbox checked={typeIds.includes(ty.id)} onCheckedChange={() => setTypeIds((l) => toggle(l, ty.id))} />
+              <label
+                key={ty.id}
+                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3"
+              >
+                <Checkbox
+                  checked={typeIds.includes(ty.id)}
+                  onCheckedChange={() => setTypeIds((l) => toggle(l, ty.id))}
+                />
                 <span className="text-sm font-semibold">{ty.name}</span>
               </label>
             ))}
@@ -166,10 +204,12 @@ export default function EventCreatePage() {
 
       <SectionTitle>{scope === 'custom' ? t('Choose flats') : t('Expected payers')}</SectionTitle>
       <p className="-mt-1 mb-2 px-1 text-[12.5px] text-muted-foreground">
-        {scope === 'custom' ? t('Tick the flats that share this cost.') : t('Untick flats not expected to pay and give a reason.')}
+        {scope === 'custom'
+          ? t('Tick the flats that share this cost.')
+          : t('Untick flats not expected to pay and give a reason.')}
       </p>
       <Card className="divide-y">
-        {(scope === 'custom' ? units.data ?? [] : inScope).map((u) => {
+        {(scope === 'custom' ? (units.data ?? []) : inScope).map((u) => {
           const isIn = scope === 'custom' ? customIds.includes(u.id) : true;
           const isExcluded = u.id in excluded;
           return (
@@ -179,7 +219,8 @@ export default function EventCreatePage() {
                   checked={scope === 'custom' ? isIn && !isExcluded : !isExcluded}
                   onCheckedChange={() => {
                     if (scope === 'custom' && !isIn) return setCustomIds((l) => [...l, u.id]);
-                    if (scope === 'custom' && isIn && !isExcluded) return setCustomIds((l) => l.filter((x) => x !== u.id));
+                    if (scope === 'custom' && isIn && !isExcluded)
+                      return setCustomIds((l) => l.filter((x) => x !== u.id));
                     setExcluded((ex) => {
                       const n = { ...ex };
                       if (isExcluded) delete n[u.id];
@@ -189,7 +230,7 @@ export default function EventCreatePage() {
                   }}
                 />
                 <span className="tabular w-16 text-sm font-bold">{u.code}</span>
-                <span className="truncate text-[13px] text-muted-foreground">{u.display_name}</span>
+                <span className="break-words text-[13px] text-muted-foreground">{u.display_name}</span>
               </label>
               {isExcluded && (
                 <Input
@@ -203,7 +244,9 @@ export default function EventCreatePage() {
             </div>
           );
         })}
-        {!inScope.length && scope !== 'custom' && <p className="p-4 text-sm text-muted-foreground">{t('Pick at least one flat type.')}</p>}
+        {!inScope.length && scope !== 'custom' && (
+          <p className="p-4 text-sm text-muted-foreground">{t('Pick at least one flat type.')}</p>
+        )}
       </Card>
       {errors.excluded && <p className="mt-2 text-[13px] font-medium text-destructive">{errors.excluded}</p>}
 
@@ -220,10 +263,17 @@ export default function EventCreatePage() {
       <div className="sticky bottom-[84px] z-10 mt-4 rounded-2xl border border-primary/30 bg-card/95 p-4 shadow-lift backdrop-blur">
         <p className="flex items-center gap-2 text-sm font-semibold">
           <Calculator className="size-4 text-primary" />
-          {t('{{s}} in scope, {{e}} expected → {{a}} per flat', { s: split.inScope, e: split.expected, a: formatINR(split.sharePaise) })}
+          {t('{{s}} in scope, {{e}} expected → {{a}} per flat', {
+            s: split.inScope,
+            e: split.expected,
+            a: formatINR(split.sharePaise),
+          })}
         </p>
         <p className="tabular mt-0.5 text-[12.5px] text-muted-foreground">
-          {t('Collects {{c}} · rounding buffer {{b}}', { c: formatINR(split.collectionPaise), b: formatINR(split.roundingBufferPaise) })}
+          {t('Collects {{c}} · rounding buffer {{b}}', {
+            c: formatINR(split.collectionPaise),
+            b: formatINR(split.roundingBufferPaise),
+          })}
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <Button variant="outline" onClick={() => validate() && setConfirm('draft')}>
@@ -239,7 +289,11 @@ export default function EventCreatePage() {
         open={!!confirm}
         onOpenChange={(o) => !o && setConfirm(null)}
         title={confirm === 'open' ? t('Open this event?') : t('Save as draft?')}
-        description={confirm === 'open' ? t('Dues are created for every expected flat and members are notified.') : t('Nothing is billed until you open it.')}
+        description={
+          confirm === 'open'
+            ? t('Dues are created for every expected flat and members are notified.')
+            : t('Nothing is billed until you open it.')
+        }
         rows={[
           { label: t('Title'), value: title },
           { label: t('Total cost'), value: formatINR(totalPaise) },

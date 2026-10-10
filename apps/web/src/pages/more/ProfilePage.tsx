@@ -3,7 +3,18 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BellOff, BellRing, KeyRound, Laptop, LogOut, Monitor, Moon, ShieldCheck, Smartphone, Sun } from 'lucide-react';
+import {
+  BellOff,
+  BellRing,
+  KeyRound,
+  Laptop,
+  LogOut,
+  Monitor,
+  Moon,
+  ShieldCheck,
+  Smartphone,
+  Sun,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime, mobileSchema, personNameSchema } from '@harmony/shared';
 import { useAuth, useMember } from '@/lib/auth';
@@ -13,6 +24,7 @@ import { useTheme, type ThemePref } from '@/lib/theme';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push';
 import { cn, deviceLabel, isIOS, isStandalone } from '@/lib/utils';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
+import { InstallHelp } from '@/components/InstallHelp';
 import { Field } from '@/components/Field';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -20,7 +32,14 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 
-type Session = { id: string; created_at: string; last_active: string; user_agent: string | null; ip: string | null; is_current: boolean };
+type Session = {
+  id: string;
+  created_at: string;
+  last_active: string;
+  user_agent: string | null;
+  ip: string | null;
+  is_current: boolean;
+};
 
 export default function ProfilePage() {
   const { t, i18n } = useTranslation();
@@ -35,7 +54,9 @@ export default function ProfilePage() {
   const [pushBusy, setPushBusy] = useState(false);
 
   useEffect(() => {
-    void currentSubscription().then((s) => setPushOn(!!s && typeof Notification !== 'undefined' && Notification.permission === 'granted'));
+    void currentSubscription().then((s) =>
+      setPushOn(!!s && typeof Notification !== 'undefined' && Notification.permission === 'granted'),
+    );
   }, []);
 
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => rpc<Session[]>('my_sessions') });
@@ -51,7 +72,11 @@ export default function ProfilePage() {
     }
     setSaving(true);
     try {
-      await rpc('update_my_profile', { p_full_name: n.data, p_phone: p, p_locale: i18n.language === 'hi' ? 'hi' : 'en' });
+      await rpc('update_my_profile', {
+        p_full_name: n.data,
+        p_phone: p,
+        p_locale: i18n.language === 'hi' ? 'hi' : 'en',
+      });
       await refreshContext();
       toast.success(t('Profile saved'));
     } catch (e) {
@@ -78,7 +103,8 @@ export default function ProfilePage() {
         if (r === 'granted') {
           setPushOn(true);
           toast.success(t('Notifications are on for this device'));
-        } else if (r === 'denied') toast.error(t('Notifications were blocked. You can allow them in your browser settings.'));
+        } else if (r === 'denied')
+          toast.error(t('Notifications were blocked. You can allow them in your browser settings.'));
         else toast.error(t('This browser does not support push notifications.'));
       } else {
         await disablePush();
@@ -120,7 +146,8 @@ export default function ProfilePage() {
       <PageHeader title={t('Profile')} back="/more" />
       <Card className="space-y-4 p-4">
         <p className="text-sm text-muted-foreground">
-          {t('Username')}: <strong className="tabular text-foreground">{(ctx?.profile && m.unit_code) || '—'}</strong>
+          {t('Username')}:{' '}
+          <strong className="tabular text-foreground">{(ctx?.profile && m.unit_code) || '—'}</strong>
           {m.unit_name ? ` · ${m.unit_name}` : ''}
         </p>
         <Field label={t('Full name')}>
@@ -132,6 +159,11 @@ export default function ProfilePage() {
         <Button onClick={saveProfile} loading={saving}>
           {t('Save profile')}
         </Button>
+      </Card>
+
+      <SectionTitle>{t('App')}</SectionTitle>
+      <Card className="p-4">
+        <InstallHelp />
       </Card>
 
       <SectionTitle>{t('Language')}</SectionTitle>
@@ -146,7 +178,12 @@ export default function ProfilePage() {
             key={k}
             type="button"
             onClick={() => void changeLang(k)}
-            className={cn('min-h-12 cursor-pointer rounded-2xl border font-semibold', i18n.language === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-secondary')}
+            className={cn(
+              'min-h-12 cursor-pointer rounded-2xl border font-semibold',
+              i18n.language === k
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'bg-card hover:bg-secondary',
+            )}
           >
             {label}
           </button>
@@ -160,7 +197,12 @@ export default function ProfilePage() {
             key={k}
             type="button"
             onClick={() => theme.setPref(k)}
-            className={cn('flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border text-sm font-semibold', theme.pref === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-secondary')}
+            className={cn(
+              'flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border text-sm font-semibold',
+              theme.pref === k
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'bg-card hover:bg-secondary',
+            )}
           >
             <Icon className="size-4" /> {label}
           </button>
@@ -172,24 +214,44 @@ export default function ProfilePage() {
         {pushSupported() ? (
           <label className="flex cursor-pointer items-center justify-between gap-3">
             <span className="flex items-center gap-3">
-              {pushOn ? <BellRing className="size-5 text-primary" /> : <BellOff className="size-5 text-muted-foreground" />}
+              {pushOn ? (
+                <BellRing className="size-5 text-primary" />
+              ) : (
+                <BellOff className="size-5 text-muted-foreground" />
+              )}
               <span>
                 <span className="block text-sm font-semibold">{t('Push notifications on this device')}</span>
-                <span className="block text-[12.5px] text-muted-foreground">{t('Notices, receipts and replies')}</span>
+                <span className="block text-[12.5px] text-muted-foreground">
+                  {t('Notices, receipts and replies')}
+                </span>
               </span>
             </span>
-            <Switch checked={!!pushOn} disabled={pushBusy || pushOn === null} onCheckedChange={(v) => void togglePush(v)} />
+            <Switch
+              checked={!!pushOn}
+              disabled={pushBusy || pushOn === null}
+              onCheckedChange={(v) => void togglePush(v)}
+            />
           </label>
         ) : (
           <p className="text-sm text-muted-foreground">
             {isIOS() && !isStandalone()
-              ? t('On iPhone, add Harmony to your Home Screen first (Share → Add to Home Screen), then open it from there to allow notifications.')
+              ? t(
+                  'On iPhone, add Harmony to your Home Screen first (Share → Add to Home Screen), then open it from there to allow notifications.',
+                )
               : t('This browser does not support push notifications.')}
           </p>
         )}
       </Card>
 
-      <SectionTitle action={(sessions.data?.length ?? 0) > 1 && <Button variant="link" size="sm" onClick={signOutOthers}>{t('Sign out others')}</Button>}>
+      <SectionTitle
+        action={
+          (sessions.data?.length ?? 0) > 1 && (
+            <Button variant="link" size="sm" onClick={signOutOthers}>
+              {t('Sign out others')}
+            </Button>
+          )
+        }
+      >
         {t('Active devices')}
       </SectionTitle>
       <Card className="divide-y">
@@ -200,10 +262,10 @@ export default function ProfilePage() {
             <div key={s.id} className="flex items-center gap-3 px-4 py-3">
               <Icon className="size-5 text-primary" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">
+                <p className="break-words text-sm font-semibold">
                   {label} {s.is_current && <Badge variant="success">{t('This device')}</Badge>}
                 </p>
-                <p className="truncate text-[12px] text-muted-foreground">
+                <p className="break-words text-[12px] text-muted-foreground">
                   {t('Last active {{d}}', { d: formatDateTime(s.last_active) })}
                   {s.ip ? ` · ${s.ip}` : ''}
                 </p>
@@ -216,14 +278,21 @@ export default function ProfilePage() {
             </div>
           );
         })}
-        {sessions.data?.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('No other devices.')}</p>}
+        {sessions.data?.length === 0 && (
+          <p className="p-4 text-sm text-muted-foreground">{t('No other devices.')}</p>
+        )}
       </Card>
-      <p className="mt-2 text-[12px] text-muted-foreground">{t('You can stay signed in on several phones at once. Signing out here takes effect within an hour on that device.')}</p>
+      <p className="mt-2 text-[12px] text-muted-foreground">
+        {t(
+          'You can stay signed in on several phones at once. Signing out here takes effect within an hour on that device.',
+        )}
+      </p>
 
       <SectionTitle>{t('Security & privacy')}</SectionTitle>
       <Card className="divide-y">
         <Link to="/change-password" className="flex min-h-14 items-center gap-3 px-4 hover:bg-secondary/50">
-          <KeyRound className="size-5 text-primary" /> <span className="font-semibold">{t('Change PIN')}</span>
+          <KeyRound className="size-5 text-primary" />{' '}
+          <span className="font-semibold">{t('Change PIN')}</span>
         </Link>
         <div className="flex gap-3 px-4 py-3 text-[12.5px] text-muted-foreground">
           <ShieldCheck className="size-5 shrink-0 text-primary" />

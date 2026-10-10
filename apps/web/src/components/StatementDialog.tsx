@@ -10,7 +10,7 @@ import { useExpenseCategories } from '@/lib/queries';
 import { statementPdf, type StatementLine } from '@/lib/pdf';
 import { downloadBlob } from '@/lib/csv';
 import { RANGE_OPTIONS, resolveRange, validateRange, type RangeKey } from '@/lib/statementRange';
-import { categoryLabel, MODE_LABELS } from '@/lib/utils';
+import { categoryLabel, MODE_LABELS, unitLabel } from '@/lib/utils';
 import { Field } from '@/components/Field';
 import { Button } from '@/components/ui/button';
 import { Input, NativeSelect } from '@/components/ui/input';
@@ -31,6 +31,8 @@ type LedgerRowS = {
   note: string | null;
   is_reversed: boolean;
   is_reversal: boolean;
+  is_catchup: boolean;
+  for_label: string | null;
 };
 type LedgerStatement = {
   from: string;
@@ -53,6 +55,8 @@ type FlatStatement = {
     reference: string | null;
     debit_paise: number;
     credit_paise: number;
+    is_catchup: boolean;
+    for_label: string | null;
   }[];
 };
 
@@ -98,27 +102,38 @@ export function StatementDialog({
           p_to: range.to,
           p_fund_id: fundId || null,
         });
-        const lines: StatementLine[] = s.rows.map((r) => ({
-          date: r.date,
-          flat: r.unit_code ?? '',
-          description:
-            [
-              categoryLabel(r.category, cats.data),
-              r.payee,
-              r.fund,
-              r.mode ? (MODE_LABELS[r.mode] ?? r.mode) : '',
-              r.reference_no ? `UTR ${r.reference_no}` : '',
-              r.note,
-            ]
-              .filter(Boolean)
-              .join(' · ') +
-            (r.is_reversed ? ' [CANCELLED]' : '') +
-            (r.is_reversal ? ' [REVERSAL]' : ''),
-          ref: r.receipt_no ?? '',
-          a: r.direction === 'credit' ? r.amount_paise : 0,
-          b: r.direction === 'debit' ? r.amount_paise : 0,
-          delta: r.direction === 'credit' ? r.amount_paise : -r.amount_paise,
-        }));
+        const lines: StatementLine[] = s.rows
+          .filter((r) => !r.is_reversed && !r.is_reversal)
+          .map((r) => {
+            const isEventFund = r.category === 'event_contribution';
+            const description =
+              [
+                // For an event contribution the fund name already says what it's for
+                // (e.g. "Security guard salary – September 2026"), so a generic
+                // "Event contribution" label would only repeat without adding anything.
+                isEventFund ? r.fund : categoryLabel(r.category, cats.data),
+                isEventFund ? null : r.fund,
+                r.payee ? t('Paid to {{p}}', { p: r.payee }) : null,
+                r.mode ? (MODE_LABELS[r.mode] ?? r.mode) : null,
+                r.reference_no ? `UTR ${r.reference_no}` : null,
+                r.note,
+                r.is_catchup ? t('Catch-up payment — for {{p}}', { p: r.for_label }) : null,
+              ]
+                .filter(Boolean)
+                .join(' · ') +
+              (r.is_reversed ? ' [CANCELLED]' : '') +
+              (r.is_reversal ? ' [REVERSAL]' : '');
+            return {
+              date: r.date,
+              flat: unitLabel(r.unit_code) || (r.unit_code ?? ''),
+              description,
+              ref: r.receipt_no ?? '',
+              a: r.direction === 'credit' ? r.amount_paise : 0,
+              b: r.direction === 'debit' ? r.amount_paise : 0,
+              delta: r.direction === 'credit' ? r.amount_paise : -r.amount_paise,
+              highlight: r.is_catchup,
+            };
+          });
         blob = await statementPdf({
           title: 'LEDGER STATEMENT',
           societyName: s.society,
@@ -130,7 +145,7 @@ export function StatementDialog({
           opening: s.opening_paise,
           lines,
           balanceMode: 'cash',
-          note: 'Balance = money in less money out. Cancelled receipts are shown with their reversal so the totals always agree with the books.',
+          note: 'Balance = money in less money out.',
         });
         name = `ledger-${s.from}-to-${s.to}.pdf`;
         void rpc('log_statement_export', {
@@ -153,6 +168,7 @@ export function StatementDialog({
           a: r.debit_paise,
           b: r.credit_paise,
           delta: r.debit_paise - r.credit_paise,
+          highlight: r.is_catchup,
         }));
         blob = await statementPdf({
           title: 'FLAT STATEMENT',

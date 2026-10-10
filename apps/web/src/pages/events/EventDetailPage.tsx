@@ -2,15 +2,24 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { CalendarCheck2, Download, FileText, IndianRupee, Pencil, PlayCircle, Receipt, Trash2 } from 'lucide-react';
+import {
+  CalendarCheck2,
+  Download,
+  FileText,
+  IndianRupee,
+  Pencil,
+  PlayCircle,
+  Receipt,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate, formatINR, parseRupeesToPaise, summariseEventSplit } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { invalidateMoney } from '@/lib/queries';
 import { nudgePush } from '@/lib/push';
-import { downloadCsv, rupees } from '@/lib/csv';
-import { reportPdf, shareOrDownloadPdf, pdfINR } from '@/lib/pdf';
+import { downloadCsv, rupees, downloadBlob } from '@/lib/csv';
+import { reportPdf, pdfINR } from '@/lib/pdf';
 import { categoryLabel, cn } from '@/lib/utils';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { CardSkeleton, ErrorState } from '@/components/States';
@@ -36,7 +45,11 @@ export default function EventDetailPage() {
   const m = useMember();
   const nav = useNavigate();
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['eventReport', id], enabled: !!id, queryFn: () => rpc<EventReport>('event_report', { p_event_id: id }) });
+  const q = useQuery({
+    queryKey: ['eventReport', id],
+    enabled: !!id,
+    queryFn: () => rpc<EventReport>('event_report', { p_event_id: id }),
+  });
   const [action, setAction] = useState<null | 'open' | 'delete' | 'close'>(null);
   const [settle, setSettle] = useState(true);
   const [note, setNote] = useState('');
@@ -70,7 +83,11 @@ export default function EventDetailPage() {
         nav('/events', { replace: true });
         return;
       } else if (action === 'close') {
-        const res = await rpc<{ balance_paise: number; moved_paise: number }>('close_event', { p_event_id: e.id, p_settle: settle, p_note: note || null });
+        const res = await rpc<{ balance_paise: number; moved_paise: number }>('close_event', {
+          p_event_id: e.id,
+          p_settle: settle,
+          p_note: note || null,
+        });
         toast.success(
           res.moved_paise > 0
             ? t('Closed. Surplus {{a}} moved to General.', { a: formatINR(res.moved_paise) })
@@ -95,7 +112,11 @@ export default function EventDetailPage() {
     setEditDueDate(e.due_date);
     setEditTotal((r.target_paise / 100).toString());
     setEditReason('');
-    setEditExcluded(Object.fromEntries(r.units.filter((u) => !u.expected).map((u) => [u.unit_id, u.exclusion_reason ?? ''])));
+    setEditExcluded(
+      Object.fromEntries(
+        r.units.filter((u) => !u.expected).map((u) => [u.unit_id, u.exclusion_reason ?? '']),
+      ),
+    );
     setEditOpen(true);
   };
 
@@ -103,17 +124,26 @@ export default function EventDetailPage() {
     setEditBusy(true);
     try {
       if (e.status === 'draft') {
-        await rpc('edit_event_draft', { p_event_id: e.id, p_title: editTitle, p_description: editDesc, p_due_date: editDueDate });
+        await rpc('edit_event_draft', {
+          p_event_id: e.id,
+          p_title: editTitle,
+          p_description: editDesc,
+          p_due_date: editDueDate,
+        });
       } else {
         const paise = parseRupeesToPaise(editTotal);
         if (paise === null) throw new Error(t('Enter a valid amount'));
         if (paise <= 0) throw new Error(t('Enter a valid amount'));
-        if (Object.values(editExcluded).some((x) => x.trim().length < 2)) throw new Error(t('Give a reason for every excluded flat.'));
+        if (Object.values(editExcluded).some((x) => x.trim().length < 2))
+          throw new Error(t('Give a reason for every excluded flat.'));
         if (editReason.trim().length < 3) throw new Error(t('Give a short reason — flats will see it'));
         await rpc('update_event_target', {
           p_event_id: e.id,
           p_total_cost_paise: paise,
-          p_excluded: Object.entries(editExcluded).map(([unit_id, reason]) => ({ unit_id, reason: reason.trim() })),
+          p_excluded: Object.entries(editExcluded).map(([unit_id, reason]) => ({
+            unit_id,
+            reason: reason.trim(),
+          })),
           p_reason: editReason.trim(),
         });
       }
@@ -132,8 +162,33 @@ export default function EventDetailPage() {
   const exportCsv = () =>
     downloadCsv(
       `event-${e.title.replace(/\W+/g, '-').toLowerCase()}.csv`,
-      ['Flat', 'Expected', 'Reason excluded', 'Due (Rs)', 'Paid (Rs)', 'Status', 'Paid extra (Rs)', 'Receipt nos'],
-      r.units.map((u) => [u.unit_code, u.expected ? 'yes' : 'no', u.exclusion_reason, rupees(u.due_paise), rupees(u.paid_paise), u.status, rupees(u.extra_paise), r.entries.filter((x) => x.unit_code === u.unit_code && x.direction === 'credit' && !x.is_reversed && !x.is_reversal).map((x) => x.receipt_no).filter(Boolean).join('; ')]),
+      [
+        'Flat',
+        'Expected',
+        'Reason excluded',
+        'Due (Rs)',
+        'Paid (Rs)',
+        'Status',
+        'Paid extra (Rs)',
+        'Receipt nos',
+      ],
+      r.units.map((u) => [
+        u.unit_code,
+        u.expected ? 'yes' : 'no',
+        u.exclusion_reason,
+        rupees(u.due_paise),
+        rupees(u.paid_paise),
+        u.status,
+        rupees(u.extra_paise),
+        r.entries
+          .filter(
+            (x) =>
+              x.unit_code === u.unit_code && x.direction === 'credit' && !x.is_reversed && !x.is_reversal,
+          )
+          .map((x) => x.receipt_no)
+          .filter(Boolean)
+          .join('; '),
+      ]),
     );
 
   const exportPdf = async () => {
@@ -143,7 +198,10 @@ export default function EventDetailPage() {
           title: 'Summary',
           summary: [
             ['Target (estimated cost)', pdfINR(r.target_paise)],
-            ['Per flat', `${pdfINR(e.per_unit_share_paise)} x ${e.expected_count} expected (of ${e.in_scope_count} in scope)`],
+            [
+              'Per flat',
+              `${pdfINR(e.per_unit_share_paise)} x ${e.expected_count} expected (of ${e.in_scope_count} in scope)`,
+            ],
             ['Collected', pdfINR(r.collected_paise)],
             ['Spent', pdfINR(r.spent_paise)],
             ['Remaining to collect', pdfINR(r.remaining_to_collect_paise)],
@@ -155,18 +213,31 @@ export default function EventDetailPage() {
           title: 'Flats',
           table: {
             head: ['Flat', 'Due', 'Paid', 'Status'],
-            body: r.units.map((u) => [u.unit_code, pdfINR(u.due_paise), pdfINR(u.paid_paise), u.expected ? u.status : `excluded: ${u.exclusion_reason ?? ''}`]),
+            body: r.units.map((u) => [
+              u.unit_code,
+              pdfINR(u.due_paise),
+              pdfINR(u.paid_paise),
+              u.expected ? u.status : `excluded: ${u.exclusion_reason ?? ''}`,
+            ]),
           },
         },
         {
           title: 'Entries',
           table: {
             head: ['Date', 'Flat', 'Item', 'Receipt', 'Amount'],
-            body: r.entries.map((x) => [formatDate(x.date), x.unit_code ?? '', `${x.unit_code ? '' : (x.payee ?? '') + ' '}${categoryLabel(x.category)}${x.is_reversed ? ' (reversed)' : ''}`.trim(), x.receipt_no ?? '', pdfINR(x.direction === 'credit' ? x.amount_paise : -x.amount_paise)]),
+            body: r.entries
+              .filter((x) => !x.is_reversed && !x.is_reversal)
+              .map((x) => [
+                formatDate(x.date),
+                x.unit_code ?? '',
+                `${x.unit_code ? '' : (x.payee ?? '') + ' '}${categoryLabel(x.category)}${x.is_reversed ? ' (reversed)' : ''}`.trim(),
+                x.receipt_no ?? '',
+                pdfINR(x.direction === 'credit' ? x.amount_paise : -x.amount_paise),
+              ]),
           },
         },
       ]);
-      await shareOrDownloadPdf(blob, `event-${e.id.slice(0, 8)}.pdf`);
+      downloadBlob(`event-${e.id.slice(0, 8)}.pdf`, blob);
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -188,18 +259,33 @@ export default function EventDetailPage() {
 
       <Card className="mb-3 p-4">
         <p className="text-sm">
-          {t('{{s}} in scope, {{e}} expected → {{a}} per flat', { s: e.in_scope_count, e: e.expected_count, a: formatINR(e.per_unit_share_paise) })}
-          {e.scope_unit_type_names.length > 0 && <span className="text-muted-foreground"> · {e.scope_unit_type_names.join(', ')}</span>}
+          {t('{{s}} in scope, {{e}} expected → {{a}} per flat', {
+            s: e.in_scope_count,
+            e: e.expected_count,
+            a: formatINR(e.per_unit_share_paise),
+          })}
+          {e.scope_unit_type_names.length > 0 && (
+            <span className="text-muted-foreground"> · {e.scope_unit_type_names.join(', ')}</span>
+          )}
         </p>
-        <p className="tabular text-[12.5px] text-muted-foreground">{t('Rounding buffer {{b}}', { b: formatINR(r.rounding_buffer_paise) })}</p>
+        <p className="tabular text-[12.5px] text-muted-foreground">
+          {t('Rounding buffer {{b}}', { b: formatINR(r.rounding_buffer_paise) })}
+        </p>
       </Card>
 
       <div className="grid grid-cols-2 gap-2.5">
         <StatTile label={t('Target')} value={formatINR(r.target_paise)} />
         <StatTile label={t('Collected')} value={formatINR(r.collected_paise)} tone="good" />
         <StatTile label={t('Spent')} value={formatINR(r.spent_paise)} tone="bad" />
-        <StatTile label={t('Remaining to collect')} value={formatINR(r.remaining_to_collect_paise)} tone={r.remaining_to_collect_paise ? 'warn' : 'default'} />
-        <StatTile label={net >= 0 ? t('Surplus') : t('Shortfall')} value={<Money paise={net} sign tone="auto" />} />
+        <StatTile
+          label={t('Remaining to collect')}
+          value={formatINR(r.remaining_to_collect_paise)}
+          tone={r.remaining_to_collect_paise ? 'warn' : 'default'}
+        />
+        <StatTile
+          label={net >= 0 ? t('Surplus') : t('Shortfall')}
+          value={<Money paise={net} sign tone="auto" />}
+        />
         {r.balance_paise !== net && <StatTile label={t('Fund balance')} value={formatINR(r.balance_paise)} />}
       </div>
 
@@ -270,7 +356,10 @@ export default function EventDetailPage() {
           <UnitLink
             key={u.unit_id}
             unitId={u.unit_id}
-            className={cn('rounded-2xl border bg-card p-3 shadow-card transition-colors hover:bg-secondary/50', !u.expected && 'opacity-60')}
+            className={cn(
+              'rounded-2xl border bg-card p-3 shadow-card transition-colors hover:bg-secondary/50',
+              !u.expected && 'opacity-60',
+            )}
           >
             <div className="flex items-center justify-between">
               <span className="tabular font-bold">{u.unit_code}</span>
@@ -281,28 +370,41 @@ export default function EventDetailPage() {
             <p className="tabular mt-1.5 text-[12px] text-muted-foreground">
               {u.expected ? `${formatINR(u.paid_paise)} / ${formatINR(u.due_paise)}` : u.exclusion_reason}
             </p>
-            {u.extra_paise > 0 && <p className="tabular text-[11.5px] font-semibold text-credit">+{formatINR(u.extra_paise)} {t('extra')}</p>}
+            {u.extra_paise > 0 && (
+              <p className="tabular text-[11.5px] font-semibold text-credit">
+                +{formatINR(u.extra_paise)} {t('extra')}
+              </p>
+            )}
           </UnitLink>
         ))}
       </div>
 
-      {r.entries.length > 0 && (
+      {r.entries.some((x) => !x.is_reversed && !x.is_reversal) && (
         <>
           <SectionTitle>{t('Entries')}</SectionTitle>
           <Card className="divide-y">
-            {r.entries.map((x) => (
-              <div key={x.entry_id} className="flex items-center gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className={cn('truncate text-sm font-semibold', x.is_reversed && 'struck')}>
-                    {x.unit_code ?? x.payee ?? categoryLabel(x.category)} {x.is_reversal && <Badge variant="info">{t('Reversal')}</Badge>}
-                  </p>
-                  <p className="text-[12px] text-muted-foreground">
-                    {formatDate(x.date)} · {categoryLabel(x.category)}{x.receipt_no ? ` · ${x.receipt_no}` : ''}
-                  </p>
+            {r.entries
+              .filter((x) => !x.is_reversed && !x.is_reversal)
+              .map((x) => (
+                <div key={x.entry_id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className={cn('break-words text-sm font-semibold', x.is_reversed && 'struck')}>
+                      {x.unit_code ?? x.payee ?? categoryLabel(x.category)}{' '}
+                      {x.is_reversal && <Badge variant="info">{t('Reversal')}</Badge>}
+                    </p>
+                    <p className="text-[12px] text-muted-foreground">
+                      {formatDate(x.date)} · {categoryLabel(x.category)}
+                      {x.receipt_no ? ` · ${x.receipt_no}` : ''}
+                    </p>
+                  </div>
+                  <Money
+                    paise={x.direction === 'credit' ? x.amount_paise : -x.amount_paise}
+                    sign
+                    tone="auto"
+                    className={cn('font-bold', x.is_reversed && 'struck')}
+                  />
                 </div>
-                <Money paise={x.direction === 'credit' ? x.amount_paise : -x.amount_paise} sign tone="auto" className={cn('font-bold', x.is_reversed && 'struck')} />
-              </div>
-            ))}
+              ))}
           </Card>
         </>
       )}
@@ -311,7 +413,11 @@ export default function EventDetailPage() {
         open={action === 'open' || action === 'delete'}
         onOpenChange={(o) => !o && setAction(null)}
         title={action === 'open' ? t('Open this event?') : t('Delete this draft?')}
-        description={action === 'open' ? t('Dues are created for every expected flat and members are notified.') : t('Nothing was billed yet. This cannot be undone.')}
+        description={
+          action === 'open'
+            ? t('Dues are created for every expected flat and members are notified.')
+            : t('Nothing was billed yet. This cannot be undone.')
+        }
         rows={[
           { label: t('Per flat'), value: formatINR(e.per_unit_share_paise), strong: true },
           { label: t('Expected payers'), value: String(e.expected_count) },
@@ -339,15 +445,25 @@ export default function EventDetailPage() {
         <div className="mt-1 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-[12.5px] leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
           <p className="font-bold">{t('Please read before closing')}</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4">
-            <li>{t('Closing ends this collection. Flats can no longer pay into it and it moves out of the active list.')}</li>
+            <li>
+              {t(
+                'Closing ends this collection. Flats can no longer pay into it and it moves out of the active list.',
+              )}
+            </li>
             <li>{t('A closed event cannot be reopened.')}</li>
-            <li>{t('If you move the balance to the General fund below, it leaves this event and no longer shows here.')}</li>
+            <li>
+              {t(
+                'If you move the balance to the General fund below, it leaves this event and no longer shows here.',
+              )}
+            </li>
           </ul>
         </div>
         {r.balance_paise !== 0 && (
           <label className="mt-1 flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3">
             <span className="text-sm font-medium">
-              {r.balance_paise > 0 ? t('Move the surplus to the General fund') : t('Cover the shortfall from the General fund')}
+              {r.balance_paise > 0
+                ? t('Move the surplus to the General fund')
+                : t('Cover the shortfall from the General fund')}
             </span>
             <Switch checked={settle} onCheckedChange={setSettle} />
           </label>
@@ -357,7 +473,9 @@ export default function EventDetailPage() {
         </Field>
         {r.remaining_to_collect_paise > 0 && (
           <p className="mt-2 text-[12.5px] text-muted-foreground">
-            {t('{{a}} is still pending from flats. Their dues stay open after closing.', { a: formatINR(r.remaining_to_collect_paise) })}
+            {t('{{a}} is still pending from flats. Their dues stay open after closing.', {
+              a: formatINR(r.remaining_to_collect_paise),
+            })}
           </p>
         )}
       </ConfirmSheet>
@@ -368,7 +486,9 @@ export default function EventDetailPage() {
         description={
           e.status === 'draft'
             ? t('Nothing has been billed yet, so you can change anything.')
-            : t('The amount is re-split across the paying flats. Every flat must read and accept the change before using the app. This only works while no flat has paid yet.')
+            : t(
+                'The amount is re-split across the paying flats. Every flat must read and accept the change before using the app. This only works while no flat has paid yet.',
+              )
         }
         confirmLabel={t('Save changes')}
         loading={editBusy}
@@ -392,10 +512,19 @@ export default function EventDetailPage() {
               <AmountInput value={editTotal} onChange={(ev) => setEditTotal(ev.target.value)} />
             </Field>
             {(() => {
-              const sp = summariseEventSplit(parseRupeesToPaise(editTotal) ?? 0, r.units.length, Object.keys(editExcluded).length, e.rounding_paise);
+              const sp = summariseEventSplit(
+                parseRupeesToPaise(editTotal) ?? 0,
+                r.units.length,
+                Object.keys(editExcluded).length,
+                e.rounding_paise,
+              );
               return (
                 <p className="tabular mt-2 rounded-xl bg-primary/10 px-3 py-2 text-[13px] font-semibold text-primary">
-                  {t('{{s}} in scope, {{e}} expected → {{a}} per flat', { s: sp.inScope, e: sp.expected, a: formatINR(sp.sharePaise) })}
+                  {t('{{s}} in scope, {{e}} expected → {{a}} per flat', {
+                    s: sp.inScope,
+                    e: sp.expected,
+                    a: formatINR(sp.sharePaise),
+                  })}
                 </p>
               );
             })()}
@@ -418,7 +547,7 @@ export default function EventDetailPage() {
                         }
                       />
                       <span className="tabular w-16 text-sm font-bold">{u.unit_code}</span>
-                      <span className="truncate text-[12.5px] text-muted-foreground">{u.unit_name}</span>
+                      <span className="break-words text-[12.5px] text-muted-foreground">{u.unit_name}</span>
                     </label>
                     {out && (
                       <Input
@@ -434,7 +563,12 @@ export default function EventDetailPage() {
               })}
             </div>
             <Field label={t('Reason (members will see this)')} className="mt-3">
-              <Input value={editReason} onChange={(ev) => setEditReason(ev.target.value)} maxLength={300} placeholder={t('e.g. Quote came in lower than expected')} />
+              <Input
+                value={editReason}
+                onChange={(ev) => setEditReason(ev.target.value)}
+                maxLength={300}
+                placeholder={t('e.g. Quote came in lower than expected')}
+              />
             </Field>
           </>
         )}

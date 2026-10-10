@@ -11,7 +11,6 @@ import {
   Phone,
   Plus,
   Search,
-  ShieldCheck,
   Trash2,
   UserRound,
   X,
@@ -19,8 +18,8 @@ import {
 import { toast } from 'sonner';
 import { MOBILE_RE, normalizeMobile } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
-import { errorMessage, rpc, supabase } from '@/lib/supabase';
-import { unwrap, useContactCategories } from '@/lib/queries';
+import { errorMessage, rpc } from '@/lib/supabase';
+import { useContactCategories } from '@/lib/queries';
 import { cn, whatsappLink } from '@/lib/utils';
 import { PhoneInput } from '@/components/PhoneInput';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
@@ -49,11 +48,6 @@ export type DirContact = {
   added_by_label: string | null;
   added_at: string;
   can_edit: boolean;
-};
-type Committee = {
-  user_id: string;
-  role: string;
-  profiles: { full_name: string; phone: string | null } | null;
 };
 type Form = {
   open: boolean;
@@ -101,19 +95,6 @@ export default function ContactsPage() {
   const [removing, setRemoving] = useState<DirContact | null>(null);
   const [busy, setBusy] = useState(false);
   const canManage = m.can('manage_contacts');
-
-  const committee = useQuery({
-    queryKey: ['committee', m.societyId],
-    queryFn: async () =>
-      unwrap<Committee[]>(
-        await supabase
-          .from('memberships')
-          .select('user_id, role, profiles!memberships_user_id_fkey(full_name, phone)')
-          .eq('society_id', m.societyId)
-          .eq('status', 'active')
-          .in('role', ['admin', 'super_admin']),
-      ),
-  });
 
   const all = useMemo(() => dir.data ?? [], [dir.data]);
   const tagCounts = useMemo(() => {
@@ -259,24 +240,6 @@ export default function ContactsPage() {
         ))}
       </div>
 
-      {!category && !q && (committee.data ?? []).length > 0 && (
-        <>
-          <SectionTitle>{t('Admins / committee')}</SectionTitle>
-          <div className="space-y-2">
-            {committee.data!.map((a) => (
-              <ContactCard
-                key={a.user_id}
-                name={a.profiles?.full_name ?? ''}
-                phones={a.profiles?.phone ? [a.profiles.phone] : []}
-                whatsapp
-                tag={a.role === 'super_admin' ? t('Super admin') : t('Admin')}
-                icon={<ShieldCheck className="size-5" />}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
       {suggestions.length > 0 && (
         <>
           <SectionTitle>{canManage ? t('Suggestions to review') : t('Your suggestions')}</SectionTitle>
@@ -285,7 +248,7 @@ export default function ContactsPage() {
               <Card key={c.id} className="p-3.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold">{c.name}</p>
+                    <p className="break-words font-semibold">{c.name}</p>
                     <p className="tabular truncate text-[12.5px] text-muted-foreground">
                       {t(c.category)} · {c.phones.join(', ')}
                     </p>

@@ -30,16 +30,27 @@ export default function UnitsPage() {
   const types = useUnitTypes(m.societyId);
   const [search, setSearch] = useState('');
   const [edit, setEdit] = useState<Unit | null>(null);
-  const [typeEdit, setTypeEdit] = useState<(Partial<UnitType> & { open: boolean; amount: string }) | null>(null);
-  const typeName = useMemo(() => Object.fromEntries((types.data ?? []).map((x) => [x.id, x.name])), [types.data]);
+  const [typeEdit, setTypeEdit] = useState<(Partial<UnitType> & { open: boolean; amount: string }) | null>(
+    null,
+  );
+  const typeName = useMemo(
+    () => Object.fromEntries((types.data ?? []).map((x) => [x.id, x.name])),
+    [types.data],
+  );
 
   if (!m.can('manage_units')) return <EmptyState title={t('You do not have permission to do this.')} />;
 
-  const list = (units.data ?? []).filter((u) => !search || `${u.code} ${u.display_name}`.toLowerCase().includes(search.toLowerCase()));
+  const list = (units.data ?? []).filter(
+    (u) => !search || `${u.code} ${u.display_name}`.toLowerCase().includes(search.toLowerCase()),
+  );
 
   return (
     <div className="animate-fade-up">
-      <PageHeader title={t('Flats & blocks')} subtitle={t('{{n}} units', { n: units.data?.length ?? 0 })} back="/more" />
+      <PageHeader
+        title={t('Flats & blocks')}
+        subtitle={t('{{n}} units', { n: units.data?.length ?? 0 })}
+        back="/more"
+      />
       <Tabs defaultValue="units">
         <TabsList>
           <TabsTrigger value="units">{t('Units')}</TabsTrigger>
@@ -49,15 +60,36 @@ export default function UnitsPage() {
         <TabsContent value="units">
           <div className="relative mb-3">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Search code or name')} className="pl-10" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('Search code or name')}
+              className="pl-10"
+            />
           </div>
-          <QueryState query={units} empty={(d) => (d.length ? null : <EmptyState icon={<Building2 className="size-7" />} title={t('No units yet')} hint={t('Use “Bulk add” to create them.')} />)}>
+          <QueryState
+            query={units}
+            empty={(d) =>
+              d.length ? null : (
+                <EmptyState
+                  icon={<Building2 className="size-7" />}
+                  title={t('No units yet')}
+                  hint={t('Use “Bulk add” to create them.')}
+                />
+              )
+            }
+          >
             {() => (
               <Card className="divide-y">
                 {list.map((u) => (
-                  <button key={u.id} type="button" onClick={() => setEdit(u)} className="flex min-h-14 w-full cursor-pointer items-center gap-3 px-4 py-2 text-left hover:bg-secondary/50">
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => setEdit(u)}
+                    className="flex min-h-14 w-full cursor-pointer items-center gap-3 px-4 py-2 text-left hover:bg-secondary/50"
+                  >
                     <span className="tabular w-20 font-bold">{u.code}</span>
-                    <span className="min-w-0 flex-1 truncate text-sm">{u.display_name}</span>
+                    <span className="min-w-0 flex-1 break-words text-sm">{u.display_name}</span>
                     <Badge variant="secondary">{typeName[u.unit_type_id]}</Badge>
                     {u.status === 'vacant' && <Badge variant="muted">{t('Vacant')}</Badge>}
                     {!u.is_billable && <Badge variant="warning">{t('Not billed')}</Badge>}
@@ -78,11 +110,19 @@ export default function UnitsPage() {
                 className="flex min-h-14 w-full cursor-pointer items-center justify-between px-4 text-left hover:bg-secondary/50"
               >
                 <span className="font-semibold">{ty.name}</span>
-                <span className="text-sm text-muted-foreground">{ty.monthly_due_paise ? formatINR(ty.monthly_due_paise) + ' / ' + t('month') : t('Uses society default')}</span>
+                <span className="text-sm text-muted-foreground">
+                  {ty.monthly_due_paise
+                    ? formatINR(ty.monthly_due_paise) + ' / ' + t('month')
+                    : t('Uses society default')}
+                </span>
               </button>
             ))}
           </Card>
-          <Button variant="outline" className="mt-3 w-full" onClick={() => setTypeEdit({ open: true, amount: '' })}>
+          <Button
+            variant="outline"
+            className="mt-3 w-full"
+            onClick={() => setTypeEdit({ open: true, amount: '' })}
+          >
             <Plus /> {t('Add flat type')}
           </Button>
         </TabsContent>
@@ -107,7 +147,13 @@ function UnitEdit({ unit, types, onClose }: { unit: Unit; types: UnitType[]; onC
   const save = async () => {
     setBusy(true);
     try {
-      await rpc('update_unit', { p_unit_id: unit.id, p_display_name: name, p_unit_type_id: type, p_status: status, p_is_billable: billable });
+      await rpc('update_unit', {
+        p_unit_id: unit.id,
+        p_display_name: name,
+        p_unit_type_id: type,
+        p_status: status,
+        p_is_billable: billable,
+      });
       void qc.invalidateQueries({ queryKey: ['units'] });
       toast.success(t('Saved'));
       onClose();
@@ -124,7 +170,9 @@ function UnitEdit({ unit, types, onClose }: { unit: Unit; types: UnitType[]; onC
           <DialogTitle>{unit.code}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <p className="text-[12.5px] text-muted-foreground">{t('The unit code is also the login username, so it cannot be changed.')}</p>
+          <p className="text-[12.5px] text-muted-foreground">
+            {t('The unit code is also the login username, so it cannot be changed.')}
+          </p>
           <Field label={t('Display name')}>
             <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
           </Field>
@@ -146,7 +194,9 @@ function UnitEdit({ unit, types, onClose }: { unit: Unit; types: UnitType[]; onC
           <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3">
             <span>
               <span className="block text-sm font-semibold">{t('Billable')}</span>
-              <span className="block text-[12.5px] text-muted-foreground">{t('Gets monthly maintenance dues')}</span>
+              <span className="block text-[12.5px] text-muted-foreground">
+                {t('Gets monthly maintenance dues')}
+              </span>
             </span>
             <Switch checked={billable} onCheckedChange={setBillable} />
           </label>
@@ -164,7 +214,13 @@ function UnitEdit({ unit, types, onClose }: { unit: Unit; types: UnitType[]; onC
   );
 }
 
-function TypeEdit({ value, onClose }: { value: Partial<UnitType> & { amount: string }; onClose: () => void }) {
+function TypeEdit({
+  value,
+  onClose,
+}: {
+  value: Partial<UnitType> & { amount: string };
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const m = useMember();
   const qc = useQueryClient();
@@ -176,7 +232,13 @@ function TypeEdit({ value, onClose }: { value: Partial<UnitType> & { amount: str
     if (amount.trim() && !paise) return toast.error(t('Enter an amount like 800 or 800.50'));
     setBusy(true);
     try {
-      await rpc('upsert_unit_type', { p_society: m.societyId, p_id: value.id ?? null, p_name: name, p_monthly_due_paise: paise, p_sort_order: value.sort_order ?? 10 });
+      await rpc('upsert_unit_type', {
+        p_society: m.societyId,
+        p_id: value.id ?? null,
+        p_name: name,
+        p_monthly_due_paise: paise,
+        p_sort_order: value.sort_order ?? 10,
+      });
       void qc.invalidateQueries({ queryKey: ['unitTypes'] });
       onClose();
     } catch (e) {
@@ -195,7 +257,11 @@ function TypeEdit({ value, onClose }: { value: Partial<UnitType> & { amount: str
           <Field label={t('Name')}>
             <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} placeholder="3BHK" />
           </Field>
-          <Field label={t('Monthly maintenance for this type')} optional hint={t('Leave empty to use the society default amount')}>
+          <Field
+            label={t('Monthly maintenance for this type')}
+            optional
+            hint={t('Leave empty to use the society default amount')}
+          >
             <AmountInput value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
         </div>
@@ -230,7 +296,20 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
   let preview: GeneratedUnit[] = [];
   let error: string | null = null;
   try {
-    preview = typeId ? generateUnits({ blocks, floors, perFloor: Number(perFloor), codePattern, namePattern, blockNamePattern, unitTypeId: typeId }, existing.length) : [];
+    preview = typeId
+      ? generateUnits(
+          {
+            blocks,
+            floors,
+            perFloor: Number(perFloor),
+            codePattern,
+            namePattern,
+            blockNamePattern,
+            unitTypeId: typeId,
+          },
+          existing.length,
+        )
+      : [];
   } catch (e) {
     error = (e as Error).message;
   }
@@ -242,7 +321,10 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
   const create = async () => {
     setBusy(true);
     try {
-      const r = await rpc<{ created: number }>('create_units_bulk', { p_society: m.societyId, p_units: preview });
+      const r = await rpc<{ created: number }>('create_units_bulk', {
+        p_society: m.societyId,
+        p_units: preview,
+      });
       toast.success(t('{{n}} units created', { n: r.created }));
       void qc.invalidateQueries({ queryKey: ['units'] });
       setConfirm(false);
@@ -256,10 +338,32 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
   return (
     <Card className="space-y-3 p-4">
       <div className="flex gap-2">
-        <Button size="sm" variant="outline" onClick={() => (setBlocks('1-6, 9-12'), setFloors('GF,FF,SF'), setPerFloor('1'), setCodePattern('P{B}-{F}'), setNamePattern('Plot {B}, {FN}'), setBlockNamePattern('Plot {B}'))}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => (
+            setBlocks('1-6, 9-12'),
+            setFloors('GF,FF,SF'),
+            setPerFloor('1'),
+            setCodePattern('P{B}-{F}'),
+            setNamePattern('Plot {B}, {FN}'),
+            setBlockNamePattern('Plot {B}')
+          )}
+        >
           {t('Plot style')}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => (setBlocks('A'), setFloors('1-18'), setPerFloor('10'), setCodePattern('{B}-{F}{N}'), setNamePattern('Block {B}, Flat {F}{N}'), setBlockNamePattern('Block {B}'))}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => (
+            setBlocks('A'),
+            setFloors('1-18'),
+            setPerFloor('10'),
+            setCodePattern('{B}-{F}{N}'),
+            setNamePattern('Block {B}, Flat {F}{N}'),
+            setBlockNamePattern('Block {B}')
+          )}
+        >
           {t('Tower style')}
         </Button>
       </div>
@@ -285,13 +389,22 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
         </Field>
       </div>
       <Field label={t('Code pattern')} hint={t('{B} block, {F} floor, {N} unit 01, {n} unit 1')}>
-        <Input maxLength={60} value={codePattern} onChange={(e) => setCodePattern(e.target.value)} className="font-mono" />
+        <Input
+          maxLength={60}
+          value={codePattern}
+          onChange={(e) => setCodePattern(e.target.value)}
+          className="font-mono"
+        />
       </Field>
       <Field label={t('Name pattern')} hint={t('{FN} gives “Ground Floor”, “Floor 18”…')}>
         <Input maxLength={80} value={namePattern} onChange={(e) => setNamePattern(e.target.value)} />
       </Field>
       <Field label={t('Block name pattern')}>
-        <Input maxLength={80} value={blockNamePattern} onChange={(e) => setBlockNamePattern(e.target.value)} />
+        <Input
+          maxLength={80}
+          value={blockNamePattern}
+          onChange={(e) => setBlockNamePattern(e.target.value)}
+        />
       </Field>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -305,7 +418,11 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
               </p>
             ))}
           </div>
-          {preview.length > 60 && <p className="mt-1 text-[12px] text-muted-foreground">{t('…and {{n}} more', { n: preview.length - 60 })}</p>}
+          {preview.length > 60 && (
+            <p className="mt-1 text-[12px] text-muted-foreground">
+              {t('…and {{n}} more', { n: preview.length - 60 })}
+            </p>
+          )}
           {(clashes.length > 0 || dupes.length > 0 || invalid.length > 0) && (
             <p className="mt-2 text-[12.5px] font-semibold text-destructive">
               {clashes.length > 0 && t('{{n}} codes already exist. ', { n: clashes.length })}
@@ -316,9 +433,22 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
         </div>
       )}
       <p className="text-[12.5px] text-muted-foreground">
-        {t('New units are billable and get the default monthly due of {{a}} unless their type has its own amount.', { a: formatINR(settings.data?.monthly_due_paise ?? 0) })}
+        {t(
+          'New units are billable and get the default monthly due of {{a}} unless their type has its own amount.',
+          { a: formatINR(settings.data?.monthly_due_paise ?? 0) },
+        )}
       </p>
-      <Button className="w-full" disabled={!preview.length || clashes.length > 0 || dupes.length > 0 || invalid.length > 0 || preview.length > 2000} onClick={() => setConfirm(true)}>
+      <Button
+        className="w-full"
+        disabled={
+          !preview.length ||
+          clashes.length > 0 ||
+          dupes.length > 0 ||
+          invalid.length > 0 ||
+          preview.length > 2000
+        }
+        onClick={() => setConfirm(true)}
+      >
         <Wand2 /> {t('Create {{n}} units', { n: preview.length })}
       </Button>
       <ConfirmSheet
@@ -333,4 +463,3 @@ function Generator({ types, existing }: { types: UnitType[]; existing: Unit[] })
     </Card>
   );
 }
-

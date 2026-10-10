@@ -9,8 +9,8 @@ import { formatDate, formatINR, istToday } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { useUnits } from '@/lib/queries';
-import { downloadCsv, rupees } from '@/lib/csv';
-import { pdfINR, reportPdf, shareOrDownloadPdf } from '@/lib/pdf';
+import { downloadCsv, rupees, downloadBlob } from '@/lib/csv';
+import { pdfINR, reportPdf } from '@/lib/pdf';
 import { cn, MODE_LABELS, shareText } from '@/lib/utils';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/States';
@@ -21,6 +21,7 @@ import { Money } from '@/components/Money';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { StatementDialog } from '@/components/StatementDialog';
+import { BreakdownDialog, type BreakdownRow } from '@/components/BreakdownDialog';
 import type { UnitStatement, UnitStatus } from '@/types';
 
 export default function UnitStatementPage() {
@@ -36,6 +37,38 @@ export default function UnitStatementPage() {
   });
   const s = q.data;
   const [stmtOpen, setStmtOpen] = useState(false);
+  const [duesFilter, setDuesFilter] = useState<'all' | 'pending' | 'paid'>('all');
+  const [breakdown, setBreakdown] = useState<'pending' | 'advance' | 'paid' | null>(null);
+  const breakdownRows: BreakdownRow[] = !s
+    ? []
+    : breakdown === 'pending'
+      ? s.dues
+          .filter((d) => !d.waived && d.pending_paise > 0)
+          .map((d) => ({
+            label: d.label,
+            sublabel: t('due {{d}}', { d: formatDate(d.due_date) }),
+            amount_paise: d.pending_paise,
+          }))
+      : breakdown === 'paid'
+        ? s.payments
+            .filter((p) => !p.is_reversed)
+            .map((p) => ({
+              label: p.receipt_no ?? MODE_LABELS[p.mode] ?? p.mode,
+              sublabel: `${formatDate(p.date)}${p.allocations.length ? ` · ${p.allocations.map((a) => a.label).join(', ')}` : ''}`,
+              amount_paise: p.amount_paise,
+            }))
+        : breakdown === 'advance'
+          ? [
+              { label: t('General fund advance'), amount_paise: s.totals.advance_paise },
+              { label: t('Event fund advance'), amount_paise: s.totals.event_advance_paise },
+            ].filter((r) => r.amount_paise > 0)
+          : [];
+  const breakdownTitle =
+    breakdown === 'pending'
+      ? t('Pending breakdown')
+      : breakdown === 'paid'
+        ? t('Total paid breakdown')
+        : t('Advance held breakdown');
   // members only see their own flat; send them there
   useEffect(() => {
     if (!m.isAdmin && m.unit_id && unitId !== m.unit_id) nav(`/reports/unit/${m.unit_id}`, { replace: true });
@@ -45,10 +78,42 @@ export default function UnitStatementPage() {
     if (!s) return;
     downloadCsv(
       `statement-${s.unit.code}.csv`,
-      ['Flat', 'Type', 'Date', 'Description', 'Amount (Rs)', 'Paid (Rs)', 'Pending (Rs)', 'Status', 'Receipt no'],
       [
-        ...s.dues.map((d) => [s.unit.code, 'Due', d.due_date, d.label, rupees(d.amount_paise), rupees(d.paid_paise), rupees(d.pending_paise), d.waived ? 'waived' : d.pending_paise ? 'pending' : 'paid', '']),
-        ...s.payments.map((p) => [s.unit.code, 'Payment', p.date, `${p.fund} ${MODE_LABELS[p.mode] ?? p.mode} ${p.reference_no ?? ''}`.trim(), rupees(p.amount_paise), '', '', p.is_reversed ? 'cancelled' : 'received', p.receipt_no ?? '']),
+        'Flat',
+        'Type',
+        'Date',
+        'Description',
+        'Amount (Rs)',
+        'Paid (Rs)',
+        'Pending (Rs)',
+        'Status',
+        'Receipt no',
+      ],
+      [
+        ...s.dues.map((d) => [
+          s.unit.code,
+          'Due',
+          d.due_date,
+          d.label,
+          rupees(d.amount_paise),
+          rupees(d.paid_paise),
+          rupees(d.pending_paise),
+          d.waived ? 'waived' : d.pending_paise ? 'pending' : 'paid',
+          '',
+        ]),
+        ...s.payments
+          .filter((p) => !p.is_reversed)
+          .map((p) => [
+            s.unit.code,
+            'Payment',
+            p.date,
+            `${p.fund} ${MODE_LABELS[p.mode] ?? p.mode} ${p.reference_no ?? ''}`.trim(),
+            rupees(p.amount_paise),
+            '',
+            '',
+            p.is_reversed ? 'cancelled' : 'received',
+            p.receipt_no ?? '',
+          ]),
       ],
     );
   };
@@ -67,21 +132,43 @@ export default function UnitStatementPage() {
         },
         {
           title: 'Dues',
-          table: { head: ['Due date', 'For', 'Amount', 'Paid', 'Pending'], body: s.dues.map((d) => [formatDate(d.due_date), d.label + (d.waived ? ' (waived)' : ''), pdfINR(d.amount_paise), pdfINR(d.paid_paise), pdfINR(d.pending_paise)]) },
+          table: {
+            head: ['Due date', 'For', 'Amount', 'Paid', 'Pending'],
+            body: s.dues.map((d) => [
+              formatDate(d.due_date),
+              d.label + (d.waived ? ' (waived)' : ''),
+              pdfINR(d.amount_paise),
+              pdfINR(d.paid_paise),
+              pdfINR(d.pending_paise),
+            ]),
+          },
         },
         {
           title: 'Payments',
-          table: { head: ['Date', 'Receipt', 'Mode', 'Amount', 'Towards'], body: s.payments.map((p) => [formatDate(p.date), (p.receipt_no ?? '') + (p.is_reversed ? ' CANCELLED' : ''), MODE_LABELS[p.mode] ?? p.mode, pdfINR(p.amount_paise), p.allocations.map((a) => a.label).join(', ')]) },
+          table: {
+            head: ['Date', 'Receipt', 'Mode', 'Amount', 'Towards'],
+            body: s.payments
+              .filter((p) => !p.is_reversed)
+              .map((p) => [
+                formatDate(p.date),
+                (p.receipt_no ?? '') + (p.is_reversed ? ' CANCELLED' : ''),
+                MODE_LABELS[p.mode] ?? p.mode,
+                pdfINR(p.amount_paise),
+                p.allocations.map((a) => a.label).join(', '),
+              ]),
+          },
         },
       ]);
-      await shareOrDownloadPdf(blob, `statement-${s.unit.code}.pdf`);
+      downloadBlob(`statement-${s.unit.code}.pdf`, blob);
     } catch (e) {
       toast.error(errorMessage(e));
     }
   };
   const share = () => {
     if (!s) return;
-    const pending = s.dues.filter((d) => d.pending_paise > 0).map((d) => `• ${d.label}: ${formatINR(d.pending_paise)}`);
+    const pending = s.dues
+      .filter((d) => d.pending_paise > 0)
+      .map((d) => `• ${d.label}: ${formatINR(d.pending_paise)}`);
     void shareText(
       `${m.society_name} — ${s.unit.code}\nPaid so far: ${formatINR(s.totals.paid_paise)}\nPending: ${formatINR(s.totals.pending_paise)}${pending.length ? '\n' + pending.join('\n') : ''}${s.totals.advance_paise ? `\nAdvance: ${formatINR(s.totals.advance_paise)}` : ''}`,
     );
@@ -90,7 +177,14 @@ export default function UnitStatementPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader title={t('Flat statement')} back="/reports" />
-      {m.isAdmin && <UnitSelect units={units.data ?? []} value={unitId ?? ''} onChange={(e) => e.target.value && nav(`/reports/unit/${e.target.value}`, { replace: true })} aria-label={t('Flat')} />}
+      {m.isAdmin && (
+        <UnitSelect
+          units={units.data ?? []}
+          value={unitId ?? ''}
+          onChange={(e) => e.target.value && nav(`/reports/unit/${e.target.value}`, { replace: true })}
+          aria-label={t('Flat')}
+        />
+      )}
       {!unitId ? (
         <EmptyState title={t('Choose a flat to see its statement')} />
       ) : q.isLoading ? (
@@ -100,13 +194,47 @@ export default function UnitStatementPage() {
       ) : (
         <>
           <p className="mt-3 text-sm text-muted-foreground">
-            <strong className="text-foreground">{s.unit.display_name}</strong> · {s.unit.type} · {t(s.unit.status === 'vacant' ? 'Vacant' : 'Occupied')}
+            <strong className="text-foreground">{s.unit.display_name}</strong> · {s.unit.type} ·{' '}
+            {t(s.unit.status === 'vacant' ? 'Vacant' : 'Occupied')}
           </p>
           <div className="mt-2 grid grid-cols-2 gap-2.5">
-            <StatTile label={t('Pending')} value={formatINR(s.totals.pending_paise)} tone={s.totals.pending_paise ? 'bad' : 'good'} hint={s.totals.overdue_paise ? t('{{a}} overdue', { a: formatINR(s.totals.overdue_paise) }) : undefined} />
-            <StatTile label={t('Advance held')} value={formatINR(s.totals.advance_paise + s.totals.event_advance_paise)} tone="good" />
-            <StatTile label={t('Total paid')} value={formatINR(s.totals.paid_paise)} className="col-span-2" />
+            <StatTile
+              label={t('Pending')}
+              value={formatINR(s.totals.pending_paise)}
+              tone={s.totals.pending_paise ? 'bad' : 'good'}
+              hint={
+                s.totals.overdue_paise
+                  ? t('{{a}} overdue', { a: formatINR(s.totals.overdue_paise) })
+                  : undefined
+              }
+              onBreakdown={s.totals.pending_paise ? () => setBreakdown('pending') : undefined}
+              breakdownLabel={t('View pending breakdown')}
+            />
+            <StatTile
+              label={t('Advance held')}
+              value={formatINR(s.totals.advance_paise + s.totals.event_advance_paise)}
+              tone="good"
+              onBreakdown={
+                s.totals.advance_paise + s.totals.event_advance_paise
+                  ? () => setBreakdown('advance')
+                  : undefined
+              }
+              breakdownLabel={t('View advance breakdown')}
+            />
+            <StatTile
+              label={t('Total paid')}
+              value={formatINR(s.totals.paid_paise)}
+              className="col-span-2"
+              onBreakdown={s.totals.paid_paise ? () => setBreakdown('paid') : undefined}
+              breakdownLabel={t('View payments breakdown')}
+            />
           </div>
+          <BreakdownDialog
+            open={breakdown !== null}
+            onOpenChange={(v) => !v && setBreakdown(null)}
+            title={breakdownTitle}
+            rows={breakdownRows}
+          />
           <Button className="mt-3 w-full" variant="secondary" onClick={() => setStmtOpen(true)}>
             <FileDown /> {t('Download statement (PDF) for a period')}
           </Button>
@@ -130,58 +258,110 @@ export default function UnitStatementPage() {
             </Button>
           )}
 
-          <SectionTitle>{t('Dues')}</SectionTitle>
+          <SectionTitle>{t('Paid / pending by month')}</SectionTitle>
+          <div className="mb-2 flex gap-2">
+            {(['all', 'pending', 'paid'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setDuesFilter(k)}
+                className={cn(
+                  'rounded-full border px-3.5 py-1.5 text-[13px] font-bold',
+                  duesFilter === k
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'bg-card text-muted-foreground',
+                )}
+              >
+                {k === 'all' ? t('All') : k === 'pending' ? t('Pending') : t('Paid')}
+              </button>
+            ))}
+          </div>
           {s.dues.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('No dues yet')}</p>
           ) : (
             <Card className="divide-y">
-              {s.dues.map((d) => {
-                const st: UnitStatus = d.waived ? 'waived' : d.pending_paise === 0 ? 'paid' : d.paid_paise > 0 ? 'partial' : 'pending';
-                return (
-                  <div key={d.id} className="flex items-center gap-3 px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{d.label}</p>
-                      <p className="text-[12px] text-muted-foreground">
-                        {t('due')} {formatDate(d.due_date)}
-                        {d.waived && d.waived_reason ? ` · ${d.waived_reason}` : ''}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <Money paise={d.amount_paise} className="text-sm font-bold" />
-                      <div className="mt-0.5">
-                        {st === 'pending' && d.due_date > istToday() ? (
-                          <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[11px] font-bold text-muted-foreground">{t('Not due yet')}</span>
-                        ) : (
-                          <StatusChip status={st} />
-                        )}
+              {[...s.dues]
+                .sort((a, b) => b.due_date.localeCompare(a.due_date))
+                .filter((d) => {
+                  const st: UnitStatus = d.waived
+                    ? 'waived'
+                    : d.pending_paise === 0
+                      ? 'paid'
+                      : d.paid_paise > 0
+                        ? 'partial'
+                        : 'pending';
+                  if (duesFilter === 'pending') return st === 'pending' || st === 'partial';
+                  if (duesFilter === 'paid') return st === 'paid';
+                  return true;
+                })
+                .map((d) => {
+                  const st: UnitStatus = d.waived
+                    ? 'waived'
+                    : d.pending_paise === 0
+                      ? 'paid'
+                      : d.paid_paise > 0
+                        ? 'partial'
+                        : 'pending';
+                  return (
+                    <div key={d.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-semibold">{d.label}</p>
+                        <p className="text-[12px] text-muted-foreground">
+                          {t('due')} {formatDate(d.due_date)}
+                          {d.waived && d.waived_reason ? ` · ${d.waived_reason}` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <Money paise={d.amount_paise} className="text-sm font-bold" />
+                        <div className="mt-0.5">
+                          {st === 'pending' && d.due_date > istToday() ? (
+                            <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
+                              {t('Not due yet')}
+                            </span>
+                          ) : (
+                            <StatusChip status={st} />
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </Card>
           )}
 
           <SectionTitle>{t('Payments')}</SectionTitle>
-          {s.payments.length === 0 ? (
+          {s.payments.every((p) => p.is_reversed) ? (
             <p className="text-sm text-muted-foreground">{t('No payments yet')}</p>
           ) : (
             <Card className="divide-y">
-              {s.payments.map((p) => (
-                <Link key={p.entry_id} to={`/receipts/${p.entry_id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/50">
-                  <div className="min-w-0 flex-1">
-                    <p className={cn('truncate text-sm font-semibold', p.is_reversed && 'struck')}>{p.receipt_no ?? MODE_LABELS[p.mode]}</p>
-                    <p className="truncate text-[12px] text-muted-foreground">
-                      {formatDate(p.date)} · {MODE_LABELS[p.mode] ?? p.mode}
-                      {p.allocations.length ? ` · ${p.allocations.map((a) => a.label).join(', ')}` : ''}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <Money paise={p.amount_paise} className={cn('font-bold text-credit', p.is_reversed && 'struck')} />
-                    {p.is_reversed && <p className="text-[10.5px] font-bold uppercase text-destructive">{t('Cancelled')}</p>}
-                  </div>
-                </Link>
-              ))}
+              {s.payments
+                .filter((p) => !p.is_reversed)
+                .map((p) => (
+                  <Link
+                    key={p.entry_id}
+                    to={`/receipts/${p.entry_id}`}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/50"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className={cn('break-words text-sm font-semibold', p.is_reversed && 'struck')}>
+                        {p.receipt_no ?? MODE_LABELS[p.mode]}
+                      </p>
+                      <p className="break-words text-[12px] text-muted-foreground">
+                        {formatDate(p.date)} · {MODE_LABELS[p.mode] ?? p.mode}
+                        {p.allocations.length ? ` · ${p.allocations.map((a) => a.label).join(', ')}` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <Money
+                        paise={p.amount_paise}
+                        className={cn('font-bold text-credit', p.is_reversed && 'struck')}
+                      />
+                      {p.is_reversed && (
+                        <p className="text-[10.5px] font-bold uppercase text-destructive">{t('Cancelled')}</p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
             </Card>
           )}
         </>

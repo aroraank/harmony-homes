@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff, KeyRound, LogIn, Building2, Send } from 'lucide-react';
@@ -24,8 +24,7 @@ export default function LoginPage() {
   const { session, loading } = useAuth();
   const nav = useNavigate();
   const loc = useLocation() as { state?: { from?: string } };
-  const [slug, setSlug] = useState(() => getLocal('hh-slug') || DEFAULT_SOCIETY_SLUG);
-  const [editSlug, setEditSlug] = useState(!slug);
+  const [slug] = useState(() => getLocal('hh-slug') || DEFAULT_SOCIETY_SLUG);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
@@ -71,7 +70,10 @@ export default function LoginPage() {
     if (!s) return setError(t('Enter your society code.'));
     if (!username.trim() || !password) return setError(t('Enter your username and PIN.'));
     setBusy(true);
-    const { error: err } = await supabase.auth.signInWithPassword({ email: usernameToEmail(username, s), password });
+    const { error: err } = await supabase.auth.signInWithPassword({
+      email: usernameToEmail(username, s),
+      password,
+    });
     setBusy(false);
     if (err) {
       const n = lock.n + 1;
@@ -94,23 +96,17 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthLayout title={t('Welcome home')} subtitle={t('Sign in with your flat code, e.g. P1-GF')} society={society.data?.name}>
+    <AuthLayout
+      title={t('Welcome home')}
+      subtitle={t('Sign in with your flat code, e.g. P1-GF')}
+      society={society.data?.name}
+    >
       <form onSubmit={submit} className="space-y-4" noValidate>
-        {editSlug ? (
-          <Field label={t('Society code')} hint={society.data ? society.data.name : slug.length >= 2 && !society.isLoading ? t('Society not found') : t('Given by your committee')}>
-            <Input value={slug} maxLength={40} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="plot-colony" />
-          </Field>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditSlug(true)}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-xl bg-secondary px-3 py-2.5 text-left text-sm"
-          >
-            <Building2 className="size-4 text-primary" />
-            <span className="flex-1 truncate font-semibold">{society.data?.name ?? slug}</span>
-            <span className="text-xs font-semibold text-primary">{t('Change')}</span>
-          </button>
-        )}
+        {/* Society switching disabled: residents sign in only to their own society. */}
+        <div className="flex w-full items-center gap-2 rounded-xl bg-secondary px-3 py-2.5 text-left text-sm">
+          <Building2 className="size-4 text-primary" />
+          <span className="flex-1 truncate font-semibold">{society.data?.name ?? slug}</span>
+        </div>
         <Field label={t('Username')} hint={t('Your flat code (for example P3-FF) or staff username')}>
           <Input
             value={username}
@@ -145,8 +141,19 @@ export default function LoginPage() {
           </div>
         </Field>
         {error && <Alert variant="danger">{error}</Alert>}
-        {lockedFor > 0 && <Alert variant="warning">{t('Too many wrong attempts. Try again in {{s}} seconds.', { s: lockedFor })}</Alert>}
-        <Button type="submit" size="xl" variant="hero" className="w-full" loading={busy} disabled={lockedFor > 0}>
+        {lockedFor > 0 && (
+          <Alert variant="warning">
+            {t('Too many wrong attempts. Try again in {{s}} seconds.', { s: lockedFor })}
+          </Alert>
+        )}
+        <Button
+          type="submit"
+          size="xl"
+          variant="hero"
+          className="w-full"
+          loading={busy}
+          disabled={lockedFor > 0}
+        >
           <LogIn /> {t('Sign in')}
         </Button>
         <p className="flex items-start gap-2 text-[12.5px] text-muted-foreground">
@@ -165,10 +172,8 @@ export default function LoginPage() {
           {t('Forgot PIN? Ask the admin')}
         </Button>
       </form>
-      <div className="mt-5 flex items-center justify-between border-t pt-4 text-sm">
-        <Link to="/register" className="font-semibold text-primary hover:underline">
-          {t('New resident? Register')}
-        </Link>
+      <div className="mt-5 flex items-center justify-end border-t pt-4 text-sm">
+        {/* Self-registration disabled: new residents are added by the admin. */}
         <button
           type="button"
           className="cursor-pointer font-semibold text-muted-foreground hover:text-foreground"
@@ -190,7 +195,9 @@ export default function LoginPage() {
           <DialogHeader>
             <DialogTitle>{t('Forgot your PIN?')}</DialogTitle>
             <DialogDescription>
-              {t('Enter your flat code. The admin and super admin are told, set a new PIN for you and give it to you personally.')}
+              {t(
+                'Enter your flat code. The admin and super admin are told, set a new PIN for you and give it to you personally.',
+              )}
             </DialogDescription>
           </DialogHeader>
           <Field label={t('Username')}>
@@ -211,7 +218,10 @@ export default function LoginPage() {
             disabled={forgotUser.trim().length < 2}
             onClick={async () => {
               setForgotBusy(true);
-              await supabase.rpc('request_pin_reset', { p_slug: slug.trim().toLowerCase(), p_username: forgotUser.trim() });
+              await supabase.rpc('request_pin_reset', {
+                p_slug: slug.trim().toLowerCase(),
+                p_username: forgotUser.trim(),
+              });
               setForgotBusy(false);
               setForgot(false);
               toast.success(t('Request sent. The admin will give you a new PIN.'));

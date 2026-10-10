@@ -34,7 +34,8 @@ export default function MeetingDetailPage() {
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ['meeting', id],
-    queryFn: async () => unwrap<Meeting>(await supabase.from('v_meetings').select('*').eq('id', id!).single()),
+    queryFn: async () =>
+      unwrap<Meeting>(await supabase.from('v_meetings').select('*').eq('id', id!).single()),
   });
   const [action, setAction] = useState<null | 'delete' | 'cancel'>(null);
   const [reason, setReason] = useState('');
@@ -99,7 +100,9 @@ export default function MeetingDetailPage() {
           </Badge>
         }
       />
-      {x.description && <p className="mb-3 text-sm text-muted-foreground">{x.description}</p>}
+      {x.description && (
+        <p className="mb-3 whitespace-pre-line text-sm text-muted-foreground">{x.description}</p>
+      )}
 
       <Card className="space-y-2 p-4">
         <p className="flex items-center gap-2 text-sm font-semibold">
@@ -110,7 +113,11 @@ export default function MeetingDetailPage() {
             <MapPin className="size-4" /> {x.location}
           </p>
         )}
-        {x.created_by_name && <p className="text-[12px] text-muted-foreground">{t('Called by {{n}}', { n: x.created_by_name })}</p>}
+        {x.created_by_name && (
+          <p className="text-[12px] text-muted-foreground">
+            {t('Called by {{n}}', { n: x.created_by_name })}
+          </p>
+        )}
       </Card>
 
       {canManage && x.status !== 'cancelled' && (

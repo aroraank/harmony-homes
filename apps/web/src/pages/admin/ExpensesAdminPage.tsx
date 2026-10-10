@@ -21,11 +21,48 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-type Template = { id: string; title: string; fund_id: string; category: string; payee: string | null; amount_paise: number; day_of_month: number; payment_mode: string | null; is_active: boolean };
-type Draft = { id: string; period: string; amount_paise: number; status: string; expense_templates: { title: string; payee: string | null } };
-type Form = { open: boolean; id?: string; title: string; fund_id: string; category: string; payee: string; amount: string; day: string; mode: string; active: boolean };
+type Template = {
+  id: string;
+  title: string;
+  fund_id: string;
+  category: string;
+  payee: string | null;
+  amount_paise: number;
+  day_of_month: number;
+  payment_mode: string | null;
+  is_active: boolean;
+};
+type Draft = {
+  id: string;
+  period: string;
+  amount_paise: number;
+  status: string;
+  expense_templates: { title: string; payee: string | null };
+};
+type Form = {
+  open: boolean;
+  id?: string;
+  title: string;
+  fund_id: string;
+  category: string;
+  payee: string;
+  amount: string;
+  day: string;
+  mode: string;
+  active: boolean;
+};
 
-const empty: Form = { open: false, title: '', fund_id: '', category: 'salary', payee: '', amount: '', day: '1', mode: 'cash', active: true };
+const empty: Form = {
+  open: false,
+  title: '',
+  fund_id: '',
+  category: 'salary',
+  payee: '',
+  amount: '',
+  day: '1',
+  mode: 'cash',
+  active: true,
+};
 
 export default function ExpensesAdminPage() {
   const { t } = useTranslation();
@@ -38,20 +75,39 @@ export default function ExpensesAdminPage() {
 
   const templates = useQuery({
     queryKey: ['templates', m.societyId],
-    queryFn: async () => unwrap<Template[]>(await supabase.from('expense_templates').select('*').eq('society_id', m.societyId).order('day_of_month')),
+    queryFn: async () =>
+      unwrap<Template[]>(
+        await supabase
+          .from('expense_templates')
+          .select('*')
+          .eq('society_id', m.societyId)
+          .order('day_of_month'),
+      ),
   });
   const drafts = useQuery({
     queryKey: ['drafts', m.societyId],
     queryFn: async () =>
-      unwrap<Draft[]>(await supabase.from('expense_drafts').select('id, period, amount_paise, status, expense_templates(title, payee)').eq('society_id', m.societyId).eq('status', 'pending').order('period')),
+      unwrap<Draft[]>(
+        await supabase
+          .from('expense_drafts')
+          .select('id, period, amount_paise, status, expense_templates(title, payee)')
+          .eq('society_id', m.societyId)
+          .eq('status', 'pending')
+          .order('period'),
+      ),
   });
 
   if (!m.can('record_expense')) return <EmptyState title={t('You do not have permission to do this.')} />;
 
   const generate = async () => {
     try {
-      const r = await rpc<{ created: number }>('generate_expense_drafts', { p_society: m.societyId, p_period: currentPeriod() });
-      toast.success(r.created ? t('{{n}} draft(s) created', { n: r.created }) : t('Drafts for this month already exist'));
+      const r = await rpc<{ created: number }>('generate_expense_drafts', {
+        p_society: m.societyId,
+        p_period: currentPeriod(),
+      });
+      toast.success(
+        r.created ? t('{{n}} draft(s) created', { n: r.created }) : t('Drafts for this month already exist'),
+      );
       void qc.invalidateQueries({ queryKey: ['drafts'] });
     } catch (e) {
       toast.error(errorMessage(e));
@@ -99,18 +155,35 @@ export default function ExpensesAdminPage() {
 
   return (
     <div className="animate-fade-up">
-      <PageHeader title={t('Recurring expenses')} subtitle={t('Like the guard’s salary — confirm each month with one tap')} back="/more" />
+      <PageHeader
+        title={t('Recurring expenses')}
+        subtitle={t('Like the guard’s salary — confirm each month with one tap')}
+        back="/more"
+      />
 
-      <SectionTitle action={<Button variant="link" size="sm" onClick={generate}><Wand2 /> {t('Create this month’s drafts')}</Button>}>
+      <SectionTitle
+        action={
+          <Button variant="link" size="sm" onClick={generate}>
+            <Wand2 /> {t('Create this month’s drafts')}
+          </Button>
+        }
+      >
         {t('Waiting for confirmation')}
       </SectionTitle>
-      <QueryState query={drafts} empty={(d) => (d.length ? null : <p className="px-1 text-sm text-muted-foreground">{t('Nothing to confirm right now.')}</p>)}>
+      <QueryState
+        query={drafts}
+        empty={(d) =>
+          d.length ? null : (
+            <p className="px-1 text-sm text-muted-foreground">{t('Nothing to confirm right now.')}</p>
+          )
+        }
+      >
         {(list) => (
           <div className="space-y-2">
             {list.map((d) => (
               <Card key={d.id} className="flex items-center gap-3 p-3.5">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{d.expense_templates.title}</p>
+                  <p className="break-words font-semibold">{d.expense_templates.title}</p>
                   <p className="text-[12.5px] text-muted-foreground">
                     {periodLabel(d.period)} · {formatINR(d.amount_paise)}
                   </p>
@@ -120,7 +193,12 @@ export default function ExpensesAdminPage() {
                     <Check /> {t('Confirm')}
                   </Link>
                 </Button>
-                <Button size="icon-sm" variant="ghost" onClick={() => skip(d.id)} aria-label={t('Skip this month')}>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() => skip(d.id)}
+                  aria-label={t('Skip this month')}
+                >
                   <SkipForward />
                 </Button>
               </Card>
@@ -129,8 +207,23 @@ export default function ExpensesAdminPage() {
         )}
       </QueryState>
 
-      <SectionTitle action={<Button size="sm" variant="outline" onClick={() => setForm({ ...empty, open: true })}><Plus /> {t('Add')}</Button>}>{t('Templates')}</SectionTitle>
-      <QueryState query={templates} empty={(d) => (d.length ? null : <EmptyState icon={<Repeat className="size-7" />} title={t('No recurring expenses')} />)}>
+      <SectionTitle
+        action={
+          <Button size="sm" variant="outline" onClick={() => setForm({ ...empty, open: true })}>
+            <Plus /> {t('Add')}
+          </Button>
+        }
+      >
+        {t('Templates')}
+      </SectionTitle>
+      <QueryState
+        query={templates}
+        empty={(d) =>
+          d.length ? null : (
+            <EmptyState icon={<Repeat className="size-7" />} title={t('No recurring expenses')} />
+          )
+        }
+      >
         {(list) => (
           <Card className="divide-y">
             {list.map((tp) => (
@@ -140,7 +233,8 @@ export default function ExpensesAdminPage() {
                     {tp.title} {!tp.is_active && <Badge variant="muted">{t('Paused')}</Badge>}
                   </p>
                   <p className="truncate text-[12.5px] text-muted-foreground">
-                    {formatINR(tp.amount_paise)} · {t('day {{d}}', { d: tp.day_of_month })} · {categoryLabel(tp.category, cats.data)}
+                    {formatINR(tp.amount_paise)} · {t('day {{d}}', { d: tp.day_of_month })} ·{' '}
+                    {categoryLabel(tp.category, cats.data)}
                     {tp.payee ? ` · ${tp.payee}` : ''}
                   </p>
                 </div>
@@ -178,23 +272,43 @@ export default function ExpensesAdminPage() {
           </DialogHeader>
           <div className="space-y-3">
             <Field label={t('Title')}>
-              <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} maxLength={80} placeholder={t('Security guard salary')} />
+              <Input
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                maxLength={80}
+                placeholder={t('Security guard salary')}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('Amount')}>
-                <AmountInput value={form.amount} disabled={!!form.id} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+                <AmountInput
+                  value={form.amount}
+                  disabled={!!form.id}
+                  onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                />
               </Field>
               <Field label={t('Day of month')}>
-                <IntInput max={28} value={form.day} onChange={(e) => setForm((f) => ({ ...f, day: e.target.value }))} />
+                <IntInput
+                  max={28}
+                  value={form.day}
+                  onChange={(e) => setForm((f) => ({ ...f, day: e.target.value }))}
+                />
               </Field>
             </div>
             {form.id && (
               <p className="text-[12.5px] text-muted-foreground">
-                {t('To change the amount, use')} <Link to="/events/recurring" className="font-semibold text-primary underline">{t('Change amount')}</Link> {t('so the history is kept and everyone is told.')}
+                {t('To change the amount, use')}{' '}
+                <Link to="/events/recurring" className="font-semibold text-primary underline">
+                  {t('Change amount')}
+                </Link>{' '}
+                {t('so the history is kept and everyone is told.')}
               </p>
             )}
             <Field label={t('Category')}>
-              <NativeSelect value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
+              <NativeSelect
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+              >
                 {cats.data?.map((c) => (
                   <option key={c.code} value={c.code}>
                     {t(c.label)}
@@ -203,20 +317,32 @@ export default function ExpensesAdminPage() {
               </NativeSelect>
             </Field>
             <Field label={t('Paid to')} optional>
-              <Input value={form.payee} onChange={(e) => setForm((f) => ({ ...f, payee: e.target.value }))} maxLength={120} />
+              <Input
+                value={form.payee}
+                onChange={(e) => setForm((f) => ({ ...f, payee: e.target.value }))}
+                maxLength={120}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('Fund')}>
-                <NativeSelect value={form.fund_id || funds.data?.find((f) => f.kind === 'general')?.id || ''} onChange={(e) => setForm((f) => ({ ...f, fund_id: e.target.value }))}>
-                  {funds.data?.filter((f) => f.is_active).map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
+                <NativeSelect
+                  value={form.fund_id || funds.data?.find((f) => f.kind === 'general')?.id || ''}
+                  onChange={(e) => setForm((f) => ({ ...f, fund_id: e.target.value }))}
+                >
+                  {funds.data
+                    ?.filter((f) => f.is_active)
+                    .map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
                 </NativeSelect>
               </Field>
               <Field label={t('Mode')}>
-                <NativeSelect value={form.mode} onChange={(e) => setForm((f) => ({ ...f, mode: e.target.value }))}>
+                <NativeSelect
+                  value={form.mode}
+                  onChange={(e) => setForm((f) => ({ ...f, mode: e.target.value }))}
+                >
                   {Object.entries(MODE_LABELS).map(([k, v]) => (
                     <option key={k} value={k}>
                       {t(v)}

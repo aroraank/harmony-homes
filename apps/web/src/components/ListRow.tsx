@@ -25,13 +25,19 @@ export function ListRow({
 }) {
   const inner = (
     <>
-      {icon && <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary [&_svg]:size-5">{icon}</div>}
+      {icon && (
+        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary [&_svg]:size-5">
+          {icon}
+        </div>
+      )}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[14.5px] font-semibold">{title}</div>
-        {subtitle && <div className="truncate text-[12.5px] text-muted-foreground">{subtitle}</div>}
+        <div className="break-words text-[14.5px] font-semibold">{title}</div>
+        {subtitle && <div className="break-words text-[12.5px] text-muted-foreground">{subtitle}</div>}
       </div>
       {right && <div className="shrink-0 text-right">{right}</div>}
-      {(to || onClick) && chevron && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+      {(to || onClick) && chevron && (
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      )}
     </>
   );
   const cls = cn(

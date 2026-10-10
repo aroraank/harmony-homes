@@ -9,14 +9,28 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { SectionTitle } from '@/components/PageHeader';
 
-type Due = { id: string; label: string; event_id: string | null; due_date: string; amount_paise: number; paid_paise: number; pending_paise: number; waived: boolean };
+type Due = {
+  id: string;
+  label: string;
+  event_id: string | null;
+  due_date: string;
+  amount_paise: number;
+  paid_paise: number;
+  pending_paise: number;
+  waived: boolean;
+};
 
 /** Every unpaid month / event for the signed-in member's flat, oldest first, with the total at the end. */
 export function MyPending({ unitId }: { unitId: string }) {
   const { t } = useTranslation();
   const [all, setAll] = useState(false);
-  const q = useQuery({ queryKey: ['unitStatement', unitId, 'pending'], queryFn: () => rpc<{ dues: Due[] }>('unit_statement', { p_unit_id: unitId }) });
-  const rows = (q.data?.dues ?? []).filter((d) => !d.waived && d.pending_paise > 0).sort((a, b) => a.due_date.localeCompare(b.due_date));
+  const q = useQuery({
+    queryKey: ['unitStatement', unitId, 'pending'],
+    queryFn: () => rpc<{ dues: Due[] }>('unit_statement', { p_unit_id: unitId }),
+  });
+  const rows = (q.data?.dues ?? [])
+    .filter((d) => !d.waived && d.pending_paise > 0)
+    .sort((a, b) => a.due_date.localeCompare(b.due_date));
   if (rows.length === 0) return null;
   const total = rows.reduce((s, d) => s + d.pending_paise, 0);
   const today = istToday();
@@ -30,14 +44,16 @@ export function MyPending({ unitId }: { unitId: string }) {
           const Row = (
             <div className="flex items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{d.label}</p>
+                <p className="break-words text-sm font-semibold">{d.label}</p>
                 <p className="text-[12px] text-muted-foreground">
                   {t('Due {{d}}', { d: formatDate(d.due_date) })}
                   {d.paid_paise > 0 ? ` · ${t('{{a}} paid', { a: formatINR(d.paid_paise) })}` : ''}
                 </p>
               </div>
               {overdue && <Badge variant="danger">{t('Overdue')}</Badge>}
-              <span className={cn('tabular font-bold', overdue ? 'text-debit' : '')}>{formatINR(d.pending_paise)}</span>
+              <span className={cn('tabular font-bold', overdue ? 'text-debit' : '')}>
+                {formatINR(d.pending_paise)}
+              </span>
             </div>
           );
           return d.event_id ? (
@@ -49,7 +65,11 @@ export function MyPending({ unitId }: { unitId: string }) {
           );
         })}
         {rows.length > 6 && (
-          <button type="button" className="w-full cursor-pointer px-4 py-2.5 text-center text-[13px] font-semibold text-primary" onClick={() => setAll((v) => !v)}>
+          <button
+            type="button"
+            className="w-full cursor-pointer px-4 py-2.5 text-center text-[13px] font-semibold text-primary"
+            onClick={() => setAll((v) => !v)}
+          >
             {all ? t('Show less') : t('Show all {{n}}', { n: rows.length })}
           </button>
         )}

@@ -41,6 +41,7 @@ export interface Profile {
   phone: string | null;
   must_change_password: boolean;
   locale: 'en' | 'hi';
+  welcomed_at: string | null;
 }
 
 export interface MyContext {
@@ -49,7 +50,8 @@ export interface MyContext {
   memberships: Membership[];
 }
 
-export type UnitStatus = 'paid' | 'partial' | 'pending' | 'advance' | 'waived' | 'none' | 'excluded' | 'draft';
+export type UnitStatus =
+  'paid' | 'partial' | 'pending' | 'advance' | 'waived' | 'none' | 'excluded' | 'draft';
 
 export interface PeriodStatus {
   status: UnitStatus;
@@ -66,10 +68,39 @@ export interface Dashboard {
   period: string;
   role: Role;
   balance_paise: number;
-  funds: { id: string; name: string; kind: 'general' | 'event'; event_id: string | null; balance_paise: number }[];
-  month: { expected_paise: number; collected_paise: number; spent_paise: number; status_counts: Partial<Record<UnitStatus, number>> };
-  events: { id: string; title: string; target_paise: number; per_unit_share_paise: number; due_date: string; collected_paise: number }[];
-  fixed_expenses: { title: string; amount_paise: number; day_of_month: number }[];
+  funds: {
+    id: string;
+    name: string;
+    kind: 'general' | 'event';
+    event_id: string | null;
+    balance_paise: number;
+  }[];
+  month: {
+    expected_paise: number;
+    collected_paise: number;
+    spent_paise: number;
+    status_counts: Partial<Record<UnitStatus, number>>;
+  };
+  events: {
+    id: string;
+    title: string;
+    target_paise: number;
+    per_unit_share_paise: number;
+    due_date: string;
+    collected_paise: number;
+  }[];
+  fixed_expenses: {
+    title: string;
+    amount_paise: number;
+    day_of_month: number;
+    draft_id: string | null;
+    draft_status: 'pending' | 'confirmed' | 'skipped' | null;
+    draft_amount_paise: number | null;
+    confirmed_amount_paise: number | null;
+    confirmed_note: string | null;
+    confirmed_at: string | null;
+    confirmed_by: string | null;
+  }[];
   unacked_notices: number;
   unread_notifications: number;
   admin: null | {
@@ -163,7 +194,15 @@ export interface MonthReport {
   collected_from_advances_paise: number;
   pending_paise: number;
   spent_by_category: { category: string; label: string; amount_paise: number }[];
-  expenses: { entry_id: string; date: string; payee: string | null; category: string; amount_paise: number; mode: string; fund: string }[];
+  expenses: {
+    entry_id: string;
+    date: string;
+    payee: string | null;
+    category: string;
+    amount_paise: number;
+    mode: string;
+    fund: string;
+  }[];
   payments: {
     entry_id: string;
     unit_id: string;
@@ -207,7 +246,13 @@ export interface UnitStatement {
     note: string | null;
     allocations: { label: string; amount_paise: number }[];
   }[];
-  totals: { pending_paise: number; overdue_paise: number; paid_paise: number; advance_paise: number; event_advance_paise: number };
+  totals: {
+    pending_paise: number;
+    overdue_paise: number;
+    paid_paise: number;
+    advance_paise: number;
+    event_advance_paise: number;
+  };
 }
 
 export interface Defaulter {
@@ -344,7 +389,14 @@ export interface PayInfo {
   bank_account_name: string | null;
   upi_qr_path: string | null;
   monthly_due_paise: number;
-  purposes: { fund_id: string; kind: 'general' | 'event'; label: string; pending_paise: number; oldest_period?: string | null; event_id?: string }[];
+  purposes: {
+    fund_id: string;
+    kind: 'general' | 'event';
+    label: string;
+    pending_paise: number;
+    oldest_period?: string | null;
+    event_id?: string;
+  }[];
 }
 
 export interface Claim {
