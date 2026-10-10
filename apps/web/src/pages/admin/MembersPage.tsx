@@ -11,7 +11,6 @@ import {
   MoreVertical,
   Pencil,
   Printer,
-  ShieldCheck,
   UserMinus,
   UserPlus,
   Users,

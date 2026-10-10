@@ -390,15 +390,15 @@ export default function RecordExpensePage() {
           label={draftAmountDiffers ? t('Reason for the different amount') : t('Note')}
           optional={!draftAmountDiffers}
           error={errors.note}
+          hint={
+            !errors.note && draftAmountDiffers
+              ? t('Usually {{a}}. This reason is shown to every member.', {
+                  a: formatINR(draft.data!.amount_paise),
+                })
+              : undefined
+          }
         >
           <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
-          {draftAmountDiffers && (
-            <p className="mt-1 text-[12px] text-muted-foreground">
-              {t('Usually {{a}}. This reason is shown to every member.', {
-                a: formatINR(draft.data!.amount_paise),
-              })}
-            </p>
-          )}
         </Field>
         <Button
           size="xl"
