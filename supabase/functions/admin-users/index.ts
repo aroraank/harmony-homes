@@ -2,6 +2,8 @@
 //   bulk_create_logins   { society_id, unit_ids? }        -> one-time credential slips
 //   reset_password       { membership_id }                -> new one-time temporary password, devices signed out
 //   create_staff         { society_id, username, full_name, phone?, role }
+//   create_guard         { society_id, username, full_name, phone? }   -> gate login (not a member)
+//   reset_guard_password { guard_id }                                  -> new one-time PIN for a gate login
 //   approve_registration { membership_id, replace? }
 //   view_as              { society_id, membership_id }   -> super admin only; one-time read-only sign-in token
 import {
@@ -26,6 +28,7 @@ type Body = {
   phone?: string;
   role?: string;
   replace?: boolean;
+  guard_id?: string;
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -38,10 +41,18 @@ Deno.serve(
 
     const requirePerm = async (societyId: string | undefined, perm: string) => {
       if (!societyId || !UUID_RE.test(societyId)) throw new HttpError(400, 'Missing society.');
-      const { data, error } = await svc.rpc('user_has_perm', { p_user: actor.id, p_society: societyId, p_perm: perm });
+      const { data, error } = await svc.rpc('user_has_perm', {
+        p_user: actor.id,
+        p_society: societyId,
+        p_perm: perm,
+      });
       if (error) rpcError(error);
       if (data !== true) throw new HttpError(403, 'You do not have permission to do this.');
-      const { data: soc, error: e2 } = await svc.from('societies').select('slug').eq('id', societyId).single();
+      const { data: soc, error: e2 } = await svc
+        .from('societies')
+        .select('slug')
+        .eq('id', societyId)
+        .single();
       if (e2 || !soc) throw new HttpError(404, 'Society not found.');
       return soc.slug as string;
     };
@@ -49,8 +60,14 @@ Deno.serve(
     switch (body.action) {
       case 'bulk_create_logins': {
         const slug = await requirePerm(body.society_id, 'manage_users');
-        const unitIds = Array.isArray(body.unit_ids) && body.unit_ids.length ? body.unit_ids.filter((u) => UUID_RE.test(u)) : null;
-        const { data: units, error } = await svc.rpc('_units_needing_login', { p_society: body.society_id, p_unit_ids: unitIds });
+        const unitIds =
+          Array.isArray(body.unit_ids) && body.unit_ids.length
+            ? body.unit_ids.filter((u) => UUID_RE.test(u))
+            : null;
+        const { data: units, error } = await svc.rpc('_units_needing_login', {
+          p_society: body.society_id,
+          p_unit_ids: unitIds,
+        });
         if (error) rpcError(error);
         const list = (units ?? []) as { id: string; code: string; display_name: string }[];
         if (list.length > 300) throw new HttpError(400, 'Create at most 300 logins at a time.');
@@ -91,7 +108,8 @@ Deno.serve(
       }
 
       case 'reset_password': {
-        if (!body.membership_id || !UUID_RE.test(body.membership_id)) throw new HttpError(400, 'Missing member.');
+        if (!body.membership_id || !UUID_RE.test(body.membership_id))
+          throw new HttpError(400, 'Missing member.');
         const { data: ctx, error } = await svc.rpc('_member_for_admin_action', {
           p_actor: actor.id,
           p_membership_id: body.membership_id,
@@ -103,7 +121,10 @@ Deno.serve(
         const password = generateTempPin(6);
         const { error: ue } = await svc.auth.admin.updateUserById(ctx.user_id, { password });
         if (ue) throw new HttpError(400, ue.message);
-        const { error: pe } = await svc.rpc('_after_password_reset', { p_actor: actor.id, p_user: ctx.user_id });
+        const { error: pe } = await svc.rpc('_after_password_reset', {
+          p_actor: actor.id,
+          p_user: ctx.user_id,
+        });
         if (pe) rpcError(pe);
         await svc.rpc('_log_admin_action', {
           p_actor: actor.id,
@@ -130,7 +151,10 @@ Deno.serve(
         });
         if (ce || !created.user) {
           const taken = /already|exists|registered/i.test(ce?.message ?? '');
-          throw new HttpError(taken ? 409 : 400, taken ? 'That username is taken.' : ce?.message ?? 'Could not create login.');
+          throw new HttpError(
+            taken ? 409 : 400,
+            taken ? 'That username is taken.' : (ce?.message ?? 'Could not create login.'),
+          );
         }
         const { error: me } = await svc.rpc('_create_staff_member', {
           p_actor: actor.id,
@@ -147,8 +171,78 @@ Deno.serve(
         return json(req, { username: username.toUpperCase(), password });
       }
 
+      case 'create_guard': {
+        // A gate login is deliberately NOT a membership: the guard can read nothing in the
+        // society and only the gate RPCs accept them.
+        const slug = await requirePerm(body.society_id, 'manage_users');
+        const username = (body.username ?? '').trim();
+        if (!/^[a-zA-Z][a-zA-Z0-9-]{1,39}$/.test(username)) {
+          throw new HttpError(400, 'Username must start with a letter and use letters, digits or dashes.');
+        }
+        const password = generateTempPin(6);
+        const { data: created, error: ce } = await svc.auth.admin.createUser({
+          email: usernameToEmail(username, slug),
+          password,
+          email_confirm: true,
+          user_metadata: { society: slug, guard: true },
+        });
+        if (ce || !created.user) {
+          const taken = /already|exists|registered/i.test(ce?.message ?? '');
+          throw new HttpError(
+            taken ? 409 : 400,
+            taken ? 'That username is taken.' : (ce?.message ?? 'Could not create login.'),
+          );
+        }
+        const { error: ge } = await svc.rpc('_create_guard_login', {
+          p_actor: actor.id,
+          p_user: created.user.id,
+          p_society: body.society_id,
+          p_name: body.full_name ?? '',
+          p_phone: body.phone ?? null,
+        });
+        if (ge) {
+          await svc.auth.admin.deleteUser(created.user.id);
+          rpcError(ge);
+        }
+        await svc.rpc('_log_admin_action', {
+          p_actor: actor.id,
+          p_society: body.society_id,
+          p_action: 'create_guard',
+          p_details: { username: username.toUpperCase(), name: body.full_name ?? '' },
+        });
+        return json(req, { username: username.toUpperCase(), password });
+      }
+
+      case 'reset_guard_password': {
+        if (!body.guard_id || !UUID_RE.test(body.guard_id)) throw new HttpError(400, 'Missing gate login.');
+        const { data: g, error } = await svc.rpc('_guard_for_admin_action', {
+          p_actor: actor.id,
+          p_guard_id: body.guard_id,
+        });
+        if (error) rpcError(error);
+        const ctx = g as { user_id: string; society_id: string };
+        const { data: target } = await svc.auth.admin.getUserById(ctx.user_id);
+        const username = (target.user?.email ?? '').split('@')[0]?.toUpperCase() ?? '';
+        const password = generateTempPin(6);
+        const { error: ue } = await svc.auth.admin.updateUserById(ctx.user_id, { password });
+        if (ue) throw new HttpError(400, ue.message);
+        const { error: pe } = await svc.rpc('_after_password_reset', {
+          p_actor: actor.id,
+          p_user: ctx.user_id,
+        });
+        if (pe) rpcError(pe);
+        await svc.rpc('_log_admin_action', {
+          p_actor: actor.id,
+          p_society: ctx.society_id,
+          p_action: 'reset_guard_password',
+          p_details: { user_id: ctx.user_id, username },
+        });
+        return json(req, { username, password });
+      }
+
       case 'approve_registration': {
-        if (!body.membership_id || !UUID_RE.test(body.membership_id)) throw new HttpError(400, 'Missing registration.');
+        if (!body.membership_id || !UUID_RE.test(body.membership_id))
+          throw new HttpError(400, 'Missing registration.');
         const args = { p_membership_id: body.membership_id, p_approver: actor.id, p_replace: !!body.replace };
         const { data: plan, error } = await svc.rpc('_approve_registration', { ...args, p_dry_run: true });
         if (error) rpcError(error);
@@ -167,15 +261,20 @@ Deno.serve(
           });
           if (oe) throw new HttpError(400, oe.message);
         }
-        const { error: ne } = await svc.auth.admin.updateUserById(plan.user_id, { email: unitEmail, email_confirm: true });
+        const { error: ne } = await svc.auth.admin.updateUserById(plan.user_id, {
+          email: unitEmail,
+          email_confirm: true,
+        });
         if (ne) {
-          if (plan.old_user_id && oldEmail) await svc.auth.admin.updateUserById(plan.old_user_id, { email: oldEmail, email_confirm: true });
+          if (plan.old_user_id && oldEmail)
+            await svc.auth.admin.updateUserById(plan.old_user_id, { email: oldEmail, email_confirm: true });
           throw new HttpError(400, ne.message);
         }
         const { error: ae } = await svc.rpc('_approve_registration', { ...args, p_dry_run: false });
         if (ae) {
           await svc.auth.admin.updateUserById(plan.user_id, { email: pendingEmail, email_confirm: true });
-          if (plan.old_user_id && oldEmail) await svc.auth.admin.updateUserById(plan.old_user_id, { email: oldEmail, email_confirm: true });
+          if (plan.old_user_id && oldEmail)
+            await svc.auth.admin.updateUserById(plan.old_user_id, { email: oldEmail, email_confirm: true });
           rpcError(ae);
         }
         return json(req, { ok: true, username: plan.unit_code });
@@ -185,7 +284,8 @@ Deno.serve(
         // Super admin only (checked again inside _start_view_as). Returns a one-time sign-in token for the
         // member; the resulting session is read-only in the database (OTP sessions are view-only).
         if (!body.society_id || !UUID_RE.test(body.society_id)) throw new HttpError(400, 'Missing society.');
-        if (!body.membership_id || !UUID_RE.test(body.membership_id)) throw new HttpError(400, 'Missing member.');
+        if (!body.membership_id || !UUID_RE.test(body.membership_id))
+          throw new HttpError(400, 'Missing member.');
         const { data: info, error } = await svc.rpc('_start_view_as', {
           p_actor: actor.id,
           p_society: body.society_id,
@@ -195,9 +295,16 @@ Deno.serve(
         const target = info as { user_id: string; label: string; role: string };
         const { data: u, error: ue } = await svc.auth.admin.getUserById(target.user_id);
         if (ue || !u.user?.email) throw new HttpError(404, 'Member login not found.');
-        const { data: link, error: le } = await svc.auth.admin.generateLink({ type: 'magiclink', email: u.user.email });
+        const { data: link, error: le } = await svc.auth.admin.generateLink({
+          type: 'magiclink',
+          email: u.user.email,
+        });
         if (le || !link.properties?.hashed_token) throw new HttpError(500, 'Could not open the member view.');
-        return json(req, { token_hash: link.properties.hashed_token, label: target.label, role: target.role });
+        return json(req, {
+          token_hash: link.properties.hashed_token,
+          label: target.label,
+          role: target.role,
+        });
       }
 
       default:

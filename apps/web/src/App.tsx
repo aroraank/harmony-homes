@@ -53,6 +53,10 @@ const MembersPage = lazy(() => import('./pages/admin/MembersPage'));
 const SettingsPage = lazy(() => import('./pages/admin/SettingsPage'));
 const AuditPage = lazy(() => import('./pages/admin/AuditPage'));
 const AlertsPage = lazy(() => import('./pages/admin/AlertsPage'));
+const VehiclesPage = lazy(() => import('./pages/vehicles/VehiclesPage'));
+const VisitorLogPage = lazy(() => import('./pages/admin/VisitorLogPage'));
+const GateLoginsPage = lazy(() => import('./pages/admin/GateLoginsPage'));
+const GatePage = lazy(() => import('./pages/gate/GatePage'));
 // Move money between funds: disabled for now.
 // const TransferPage = lazy(() => import('./pages/admin/TransferPage'));
 
@@ -74,6 +78,13 @@ function Protected() {
       </div>
     );
   if (ctx?.profile?.must_change_password) return <Navigate to="/change-password" replace />;
+  // A gate (security guard) login is not a member: it only ever sees the gate screen.
+  if (!active && ctx?.guard)
+    return (
+      <Suspense fallback={<Splash />}>
+        <GatePage />
+      </Suspense>
+    );
   if (!active)
     return (
       <Suspense fallback={<Splash />}>
@@ -150,6 +161,7 @@ export default function App() {
         <Route path="concerns/new" element={<ConcernNewPage />} />
         <Route path="concerns/:id" element={<ConcernDetailPage />} />
         <Route path="contacts" element={<ContactsPage />} />
+        <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="more" element={<MorePage />} />
         <Route path="profile" element={<ProfilePage />} />
@@ -164,6 +176,8 @@ export default function App() {
         <Route path="admin/settings" element={<SettingsPage />} />
         <Route path="admin/audit" element={<AuditPage />} />
         <Route path="admin/alerts" element={<AlertsPage />} />
+        <Route path="admin/visitors" element={<VisitorLogPage />} />
+        <Route path="admin/gate-logins" element={<GateLoginsPage />} />
         {/* Move money between funds: disabled for now — redirect any direct link to home. */}
         <Route path="admin/transfer" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

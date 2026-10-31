@@ -85,6 +85,31 @@ export function formatDateTime(iso: string | null | undefined): string {
   return dtFmt.format(new Date(iso)).replace(/ (am|pm)$/i, '');
 }
 
+const dtFmt12 = new Intl.DateTimeFormat('en-IN', {
+  timeZone: TZ,
+  day: '2-digit',
+  month: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+});
+
+/** "21 Oct, 1:54 PM" in IST from an ISO timestamp — for screens (the gate panel) where 12-hour time with
+ *  AM/PM reads more easily than 24-hour time. */
+export function formatDateTime12(iso: string | null | undefined): string {
+  if (!iso) return '';
+  return dtFmt12.format(new Date(iso)).replace(/\s*([ap])\.?m\.?$/i, (_m, ap: string) => ` ${ap.toUpperCase()}M`);
+}
+
+/** Split a whole number of minutes into days/hours/minutes for a "how long" display. */
+export function splitMinutes(totalMinutes: number): { days: number; hours: number; minutes: number } {
+  const m = Math.max(0, Math.round(totalMinutes));
+  const days = Math.floor(m / 1440);
+  const hours = Math.floor((m % 1440) / 60);
+  const minutes = m % 60;
+  return { days, hours, minutes };
+}
+
 /** Days between two YYYY-MM-DD dates (b - a) */
 export function daysBetween(a: string, b: string): number {
   return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86_400_000);

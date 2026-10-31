@@ -4,16 +4,16 @@ import { useTranslation } from 'react-i18next';
 import {
   Bell,
   CalendarHeart,
+  Car,
   Eye,
   Home,
   LayoutGrid,
-  Megaphone,
   ScrollText,
   WalletCards,
   WifiOff,
 } from 'lucide-react';
 import { useAuth, useMember } from '@/lib/auth';
-import { useDashboard, useNotifications } from '@/lib/queries';
+import { useNotifications } from '@/lib/queries';
 import { useOnline } from '@/lib/online';
 import { refreshPushRegistration } from '@/lib/push';
 import { setLanguage } from '@/lib/i18n';
@@ -23,6 +23,8 @@ import { brand } from '@/brand';
 import { cn } from '@/lib/utils';
 import { NoticeGate } from './NoticeGate';
 import { WelcomeDialog } from '../WelcomeDialog';
+import { VehiclePrompt } from '../VehiclePrompt';
+import { WelcomeBackToast } from '../WelcomeBackToast';
 import { CreditLine } from '../CreditLine';
 import { AdminFab } from './AdminFab';
 import { ListSkeleton } from '../States';
@@ -40,7 +42,6 @@ export function AppShell() {
   };
   const online = useOnline();
   const loc = useLocation();
-  const dash = useDashboard(m.societyId);
   const notif = useNotifications();
   const unread = (notif.data ?? []).filter((n) => !n.read_at).length;
 
@@ -52,12 +53,12 @@ export function AppShell() {
     window.scrollTo({ top: 0 });
   }, [loc.pathname]);
 
-  const tabs = [
+  const tabs: { to: string; label: string; Icon: typeof Home; end?: boolean; badge?: number }[] = [
     { to: '/', label: t('Home'), Icon: Home, end: true },
     { to: '/dues', label: t('Dues'), Icon: WalletCards },
     { to: '/ledger', label: t('Ledger'), Icon: ScrollText },
     { to: '/meetings', label: t('Meetings'), Icon: CalendarHeart },
-    { to: '/notices', label: t('Notices'), Icon: Megaphone, badge: dash.data?.unacked_notices ?? 0 },
+    { to: '/vehicles', label: t('Vehicles'), Icon: Car },
   ];
 
   return (
@@ -149,7 +150,7 @@ export function AppShell() {
 
       {m.isAdmin &&
         !viewOnly &&
-        ['/', '/dues', '/ledger', '/meetings', '/notices'].includes(loc.pathname) && <AdminFab />}
+        ['/', '/dues', '/ledger', '/meetings', '/vehicles'].includes(loc.pathname) && <AdminFab />}
 
       <nav
         aria-label={t('Main')}
@@ -193,6 +194,8 @@ export function AppShell() {
       </nav>
 
       {!viewOnly && <WelcomeDialog />}
+      {!viewOnly && <WelcomeBackToast />}
+      {!viewOnly && <VehiclePrompt />}
       {!viewOnly && <NoticeGate />}
     </div>
   );

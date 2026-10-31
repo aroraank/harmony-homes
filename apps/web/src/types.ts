@@ -42,12 +42,108 @@ export interface Profile {
   must_change_password: boolean;
   locale: 'en' | 'hi';
   welcomed_at: string | null;
+  vehicle_prompt_at?: string | null;
+}
+
+export interface GuardContext {
+  guard_id: string;
+  society_id: string;
+  society_name: string;
+  society_slug: string;
+  status: 'active' | 'disabled';
 }
 
 export interface MyContext {
   user_id: string;
   profile: Profile | null;
   memberships: Membership[];
+  /** set only for a gate (security guard) login, which has no membership */
+  guard?: GuardContext | null;
+}
+
+// --- Vehicles and the gate -------------------------------------------------
+export type VehicleKind = 'car' | 'bike' | 'scooter' | 'other';
+
+/** A guest vehicle at the gate can also be tagged as a truck, which residents' own vehicles never are. */
+export type GateVehicleKind = VehicleKind | 'truck';
+
+export interface VehicleRow {
+  id: string;
+  plate: string;
+  plate_text: string;
+  kind: VehicleKind;
+  model: string | null;
+  color: string | null;
+  unit_id: string;
+  unit_code: string;
+  unit_name: string;
+  owner_name: string | null;
+  can_edit: boolean;
+}
+
+export interface GateFlat {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface GateVisitRow {
+  id: string;
+  plate_text: string;
+  in_at: string;
+  out_at?: string | null;
+  unit_id?: string | null;
+  unit_code: string | null;
+  unit_name: string | null;
+  note?: string | null;
+  kind?: GateVehicleKind | null;
+}
+
+export interface GateLookup {
+  plate: string;
+  plate_text: string;
+  resident: {
+    vehicle_id: string;
+    unit_id: string;
+    unit_code: string;
+    unit_name: string;
+    kind: VehicleKind;
+    model: string | null;
+    color: string | null;
+    plate_text: string;
+  } | null;
+  open_visit: (GateVisitRow & { in_at: string }) | null;
+  last_visit: { in_at: string; out_at: string; unit_code: string | null; unit_name: string | null } | null;
+}
+
+export interface GateBoard {
+  inside: GateVisitRow[];
+  recent_out: GateVisitRow[];
+  in_today: number;
+  society_name: string;
+}
+
+export interface VisitorLogRow extends GateVisitRow {
+  in_by: string | null;
+  out_by: string | null;
+  minutes: number | null;
+}
+
+export interface GuardRow {
+  id: string;
+  user_id: string;
+  full_name: string;
+  phone: string | null;
+  status: 'active' | 'disabled';
+  created_at: string;
+  must_change_password: boolean;
+}
+
+export interface VehiclePromptInfo {
+  show: boolean;
+  unit_id?: string;
+  unit_code?: string;
+  unit_name?: string;
 }
 
 export type UnitStatus =
@@ -379,6 +475,7 @@ export interface Settings {
   upi_qr_path: string | null;
   transparency_feed: boolean;
   location_retention_days: number;
+  visitor_log_retention_days: number;
 }
 
 export interface PayInfo {

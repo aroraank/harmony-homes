@@ -42,8 +42,16 @@ export default {
       },
       keyframes: {
         'fade-up': { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'none' } },
+        'pop-in': {
+          '0%': { opacity: '0', transform: 'scale(0.5) rotate(-8deg)' },
+          '65%': { opacity: '1', transform: 'scale(1.08) rotate(3deg)' },
+          '100%': { opacity: '1', transform: 'scale(1) rotate(0)' },
+        },
       },
-      animation: { 'fade-up': 'fade-up 220ms ease-out both' },
+      animation: {
+        'fade-up': 'fade-up 220ms ease-out both',
+        'pop-in': 'pop-in 480ms cubic-bezier(0.34,1.56,0.64,1) both',
+      },
     },
   },
   plugins: [animate],

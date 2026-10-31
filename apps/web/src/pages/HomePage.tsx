@@ -13,12 +13,11 @@ import {
   BadgeCheck,
   BellRing,
   CalendarClock,
-  CalendarHeart,
+  Car,
   ChevronRight,
   ClipboardList,
   Download,
   FileDown,
-  IndianRupee,
   MessageCircle,
   MessagesSquare,
   Share2,
@@ -29,7 +28,6 @@ import {
   MessageSquareWarning,
   Receipt,
   Sparkles,
-  User,
   UserPlus,
   Wallet,
 } from 'lucide-react';
@@ -56,6 +54,7 @@ import { Input } from '@/components/ui/input';
 import { PendingPaymentDialog } from '@/components/PendingPaymentDialog';
 import { FEEDBACK_SENT_KEY } from '@/lib/feedback';
 import { useDirectory } from '@/pages/contacts/ContactsPage';
+import { useVehicles } from '@/pages/vehicles/VehiclesPage';
 import { ReminderCards } from './reminders/ReminderCards';
 import type { Dashboard } from '@/types';
 
@@ -110,17 +109,14 @@ export default function HomePage() {
 
       {d.mine && <MyFlatCard d={d} monthlyOn={monthlyOn} />}
       {d.mine && <MyPending unitId={d.mine.unit_id} />}
+      {d.mine && !viewOnly && <MyVehiclesNudge unitId={d.mine.unit_id} />}
       {d.admin && <AdminAttention d={d} monthlyOn={monthlyOn} />}
 
       <div className="grid grid-cols-2 gap-2.5">
-        {d.mine && <QuickLink to="/pay" icon={<IndianRupee />} label={t('Pay / mark paid')} />}
         <QuickLink to="/dues" icon={<Wallet />} label={t('My dues')} />
+        <QuickLink to="/vehicles" icon={<Car />} label={t('My vehicles')} />
         <QuickLink to="/ledger" icon={<Receipt />} label={t('Ledger')} />
         <QuickLink to="/reports/position" icon={<Scale />} label={t('Society position')} />
-        <QuickLink to="/meetings" icon={<CalendarClock />} label={t('Meetings')} />
-        <QuickLink to="/events" icon={<CalendarHeart />} label={t('Events')} />
-        <QuickLink to="/profile" icon={<User />} label={t('Profile')} />
-        <QuickLink to="/concerns/new" icon={<MessageSquareWarning />} label={t('Raise a concern')} />
       </div>
 
       <NextMeetingCard />
@@ -310,6 +306,31 @@ function QuickLink({ to, icon, label }: { to: string; icon: React.ReactNode; lab
       </span>
       <span className="text-[13.5px] font-semibold leading-tight">{label}</span>
     </Link>
+  );
+}
+
+function MyVehiclesNudge({ unitId }: { unitId: string }) {
+  const { t } = useTranslation();
+  const m = useMember();
+  const vehicles = useVehicles(m.societyId);
+  if (!vehicles.data || vehicles.data.some((v) => v.unit_id === unitId)) return null;
+  return (
+    <Card className="border-sky-200 bg-gradient-to-br from-sky-50 to-card p-4 dark:border-sky-500/20 dark:from-sky-500/10">
+      <div className="flex items-start gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-600 text-white">
+          <Car className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-bold">{t('Add your vehicles')}</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
+            {t('Register your car, scooter or motorcycle so neighbours and the guard can identify it.')}
+          </p>
+          <Button size="sm" asChild className="mt-3">
+            <Link to="/vehicles">{t('Add now')}</Link>
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

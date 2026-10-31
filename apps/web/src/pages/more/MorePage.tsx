@@ -5,18 +5,23 @@ import {
   BarChart3,
   BellRing,
   Building2,
+  Car,
   CalendarClock,
+  CalendarHeart,
   Download,
   FileClock,
   IndianRupee,
   LogOut,
+  Megaphone,
   MessageSquareWarning,
   MessagesSquare,
   Phone,
   Receipt,
   Repeat,
+  LogIn,
   Settings,
   ShieldAlert,
+  ShieldCheck,
   UserCog,
   Users,
 } from 'lucide-react';
@@ -49,8 +54,16 @@ export default function MorePage() {
   const dash = useDashboard(m.societyId);
   const openConcerns = dash.data?.admin?.open_concerns ?? 0;
 
+  const unackedNotices = dash.data?.unacked_notices ?? 0;
   const society: Item[] = [
+    {
+      to: '/notices',
+      label: t('Notices'),
+      Icon: Megaphone,
+      badge: unackedNotices > 0 ? unackedNotices : undefined,
+    },
     { to: '/meetings', label: t('Meetings'), Icon: CalendarClock },
+    { to: '/events', label: t('Events'), Icon: CalendarHeart },
     {
       to: '/concerns',
       label: m.isAdmin ? t('Concerns inbox') : t('My concerns'),
@@ -58,6 +71,7 @@ export default function MorePage() {
       badge: m.isAdmin && openConcerns > 0 ? openConcerns : undefined,
     },
     { to: '/contacts', label: t('Important numbers'), Icon: Phone },
+    { to: '/vehicles', label: t('Vehicles'), Icon: Car },
     { to: '/reminders', label: t('Reminders'), Icon: BellRing },
     { to: '/reports', label: t('Reports & charts'), Icon: BarChart3 },
     {
@@ -84,6 +98,8 @@ export default function MorePage() {
     { to: '/admin/settings', label: t('Society settings'), Icon: Settings, perm: 'manage_settings' },
     { to: '/admin/audit', label: t('Audit log'), Icon: FileClock, adminOnly: true },
     { to: '/admin/alerts', label: t('Security alerts'), Icon: ShieldAlert, adminOnly: true },
+    { to: '/admin/visitors', label: t('Visitor vehicles'), Icon: LogIn, adminOnly: true },
+    { to: '/admin/gate-logins', label: t('Gate logins'), Icon: ShieldCheck, perm: 'manage_users' },
   ];
   const visibleAdmin = admin.filter((i) => (i.perm ? m.can(i.perm) : i.adminOnly ? m.isAdmin : true));
 
