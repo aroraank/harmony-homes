@@ -88,3 +88,22 @@ unrecorded case got the stronger treatment. One change, in `components/VehicleKi
 
 ## 2026-10-31 (cont. 2)
 - Slimmed the home screen's quick-actions grid from 9 tiles to the 4 most-used: My dues, My vehicles, Ledger, Society position. Pay/mark paid is unaffected — it already has its own prominent button on the "My flat" card. The other 4 (Meetings, Events, Profile, Raise a concern) moved to the Menu/More page — Meetings, Profile and Concerns were already there; added an "Events" tile to the Society section so nothing was lost.
+
+## 2026-10-31 (cont. 3)
+- Added a periodic (every 45 min) + on-foreground service-worker update check in main.tsx, so a member who leaves the app open for hours still gets the "new version available" toast, not just on a fresh relaunch.
+
+## 2026-10-31 (cont. 4)
+- Polished the Vehicles page per the mockup the user shared: each vehicle's icon tile is now colour-coded by type (car/bike/scooter/other), matching the palette already used on the gate screen and visitor log, so a vehicle reads the same way everywhere in the app. "Add my vehicle" in the empty state is now the bold hero-gradient CTA instead of a plain button.
+
+## 2026-11-18 — guard maintenance ₹800 → ₹1,000, fee notice, vehicle rules
+- **Migration** `supabase/migrations/20261118000001_fee_increase_vehicle_rules.sql` (idempotent): the "Security guard salary"
+  recurring event goes to ₹1,000 per flat (₹30,000 for 30 flats) from the **December 2026 event** onward; events already
+  generated (up to November) keep ₹800. Records a fee notice, notifies every member incl. admins once.
+- **Fee notice popup** (`FeeChangeDialog.tsx`): flats must tick + acknowledge (recorded, admins notified); admins/super admin see an
+  info version and can close it. Shown before the vehicle popups. Admin Home card lists who has acknowledged.
+- **Vehicles:** every vehicle is tagged Owner / Tenant; the "add your vehicles" popup can be skipped 3 times per flat (shows how many
+  are left), then it is forced on the Home screen until a vehicle is added or "I do not have a vehicle" is chosen (admins are
+  notified and it is written to the audit log). Every 3 months owners confirm their vehicles (reminder notification + popup), with a
+  one-tap "remove all tenant vehicles". Admin Home card shows vehicle registration status per flat.
+- **Tests:** `supabase/tests/fee_vehicle.test.sql` (run on a scratch DB after all migrations + seed).
+- To deploy: run the migration (`supabase db push`), then push the web app once. No edge function changes.

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Bike, Car, Pencil, PieChart as PieChartIcon, Plus, Search, Trash2 } from 'lucide-react';
+import { Bike, Car, Pencil, PieChart as PieChartIcon, Plus, Search, Trash2, Users } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { useUnits } from '@/lib/queries';
+import { useVehicles } from '@/lib/vehicleGate';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { EmptyState, QueryState } from '@/components/States';
 import { Field } from '@/components/Field';
@@ -31,14 +32,10 @@ import { Badge } from '@/components/ui/badge';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { VehicleKind, VehicleRow } from '@/types';
+import type { VehicleHolder, VehicleKind, VehicleRow } from '@/types';
 
-export function useVehicles(societyId: string) {
-  return useQuery({
-    queryKey: ['vehicles', societyId],
-    queryFn: () => rpc<VehicleRow[]>('vehicle_directory', { p_society: societyId }),
-  });
-}
+// kept here as a re-export so existing imports (Home) keep working; the hook lives in lib/vehicleGate
+export { useVehicles };
 
 export const KIND_LABELS: Record<VehicleKind, string> = {
   car: 'Car',
@@ -51,12 +48,22 @@ export function KindIcon({ kind, className }: { kind: VehicleKind; className?: s
   return kind === 'car' || kind === 'other' ? <Car className={className} /> : <Bike className={className} />;
 }
 
+/** One colour per vehicle type, matching the gate log's palette so a vehicle reads the same way
+ * everywhere it appears in the app. */
+const KIND_TILE: Record<VehicleKind, string> = {
+  car: 'bg-sky-600',
+  bike: 'bg-violet-600',
+  scooter: 'bg-teal-600',
+  other: 'bg-slate-500',
+};
+
 type Form = {
   open: boolean;
   id: string | null;
   unit_id: string;
   plate: string;
   kind: VehicleKind;
+  holder: VehicleHolder | '';
   model: string;
   color: string;
 };
@@ -74,10 +81,12 @@ export default function VehiclesPage() {
   const [search, setSearch] = useState('');
   const [form, setForm] = useState<Form | null>(null);
   const [removing, setRemoving] = useState<VehicleRow | null>(null);
+  const [clearTenants, setClearTenants] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const all = useMemo(() => list.data ?? [], [list.data]);
   const mine = all.filter((v) => v.unit_id === m.unit_id);
+  const myTenantVehicles = mine.filter((v) => v.holder === 'tenant');
   const q = search.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   const matches = q
     ? all.filter(
@@ -90,10 +99,14 @@ export default function VehiclesPage() {
       )
     : all;
 
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['vehicles'] });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['vehicles'] });
+    void qc.invalidateQueries({ queryKey: ['vehicleGate'] });
+    void qc.invalidateQueries({ queryKey: ['vehicleCompliance'] });
+  };
 
   const openAdd = () =>
-    setForm({ open: true, id: null, unit_id: m.unit_id ?? '', plate: '', kind: 'car', model: '', color: '' });
+    setForm({ open: true, id: null, unit_id: m.unit_id ?? '', plate: '', kind: 'car', holder: '', model: '', color: '' });
 
   // Arriving here from the "Add my vehicle" popup — open the add form right away so the member
   // doesn't have to tap "Add" a second time. Clears the nav state afterwards so a back/forward
@@ -101,7 +114,7 @@ export default function VehiclesPage() {
   useEffect(() => {
     const state = loc.state as { autoOpenAdd?: boolean } | null;
     if (state?.autoOpenAdd) {
-      setForm({ open: true, id: null, unit_id: m.unit_id ?? '', plate: '', kind: 'car', model: '', color: '' });
+      setForm({ open: true, id: null, unit_id: m.unit_id ?? '', plate: '', kind: 'car', holder: '', model: '', color: '' });
       nav(loc.pathname, { replace: true, state: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,6 +126,7 @@ export default function VehiclesPage() {
       unit_id: v.unit_id,
       plate: v.plate_text,
       kind: v.kind,
+      holder: v.holder ?? '',
       model: v.model ?? '',
       color: v.color ?? '',
     });
@@ -122,6 +136,7 @@ export default function VehiclesPage() {
     if (!form.unit_id) return toast.error(t('Choose a flat.'));
     if (form.plate.replace(/[^A-Za-z0-9]/g, '').length < 4)
       return toast.error(t('Enter the full vehicle number.'));
+    if (!form.holder) return toast.error(t('Choose whether this vehicle is the owner\'s or a tenant\'s.'));
     setBusy(true);
     try {
       if (form.id) {
@@ -131,6 +146,7 @@ export default function VehiclesPage() {
           p_kind: form.kind,
           p_model: form.model || null,
           p_color: form.color || null,
+          p_holder: form.holder,
         });
       } else {
         await rpc('add_vehicle', {
@@ -140,6 +156,7 @@ export default function VehiclesPage() {
           p_kind: form.kind,
           p_model: form.model || null,
           p_color: form.color || null,
+          p_holder: form.holder,
         });
       }
       toast.success(form.id ? t('Vehicle updated') : t('Vehicle added'));
@@ -159,6 +176,21 @@ export default function VehiclesPage() {
       await rpc('remove_vehicle', { p_vehicle_id: removing.id });
       toast.success(t('Vehicle removed'));
       setRemoving(null);
+      refresh();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeTenantVehicles = async () => {
+    if (!m.unit_id) return;
+    setBusy(true);
+    try {
+      const n = await rpc<number>('remove_tenant_vehicles', { p_society: m.societyId, p_unit_id: m.unit_id });
+      toast.success(t('{{n}} tenant vehicle(s) removed', { n }));
+      setClearTenants(false);
       refresh();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -190,7 +222,7 @@ export default function VehiclesPage() {
               <p className="mt-0.5 text-[13px] text-muted-foreground">
                 {t('Add your car, scooter or motorcycle so neighbours and the guard can identify it.')}
               </p>
-              <Button className="mt-3 w-full" onClick={openAdd}>
+              <Button variant="hero" size="lg" className="mt-3 w-full" onClick={openAdd}>
                 <Plus /> {t('Add my vehicle')}
               </Button>
             </Card>
@@ -199,6 +231,15 @@ export default function VehiclesPage() {
               {mine.map((v) => (
                 <Row key={v.id} v={v} onEdit={() => openEdit(v)} onRemove={() => setRemoving(v)} />
               ))}
+              {myTenantVehicles.length > 0 && (
+                <Button
+                  variant="outline"
+                  className="w-full border-violet-300 text-violet-800 dark:border-violet-500/30 dark:text-violet-300"
+                  onClick={() => setClearTenants(true)}
+                >
+                  <Users /> {t('Tenants moved out? Remove all tenant vehicles ({{n}})', { n: myTenantVehicles.length })}
+                </Button>
+              )}
             </div>
           )}
         </>
@@ -298,6 +339,28 @@ export default function VehiclesPage() {
                   <option value="other">{t('Other')}</option>
                 </NativeSelect>
               </Field>
+              <Field label={t('This vehicle belongs to')} hint={t('Tenants change over time, so tag every vehicle.')}>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('This vehicle belongs to')}>
+                  {(['owner', 'tenant'] as const).map((h) => (
+                    <button
+                      key={h}
+                      type="button"
+                      role="radio"
+                      aria-checked={form.holder === h}
+                      onClick={() => setForm({ ...form, holder: h })}
+                      className={`h-12 cursor-pointer rounded-xl border-2 text-[14.5px] font-bold transition-colors ${
+                        form.holder === h
+                          ? h === 'owner'
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+                            : 'border-violet-600 bg-violet-50 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300'
+                          : 'border-input bg-card text-muted-foreground'
+                      }`}
+                    >
+                      {h === 'owner' ? t('Owner') : t('Tenant (kiraedaar)')}
+                    </button>
+                  ))}
+                </div>
+              </Field>
               <Field label={t('Model name')} hint={t('For example Verna, Thar, Activa')} optional>
                 <Input
                   value={form.model}
@@ -324,6 +387,17 @@ export default function VehiclesPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      <ConfirmSheet
+        open={clearTenants}
+        onOpenChange={setClearTenants}
+        title={t('Remove all tenant vehicles?')}
+        description={t('This removes {{n}} vehicle(s) tagged as Tenant from your flat. Owner vehicles are kept. You can add the new tenants\' vehicles afterwards.', { n: myTenantVehicles.length })}
+        confirmLabel={t('Remove tenant vehicles')}
+        destructive
+        loading={busy}
+        onConfirm={() => void removeTenantVehicles()}
+      />
 
       <ConfirmSheet
         open={!!removing}
@@ -353,12 +427,13 @@ function Row({
   const { t } = useTranslation();
   return (
     <Card className="flex items-center gap-3 p-3.5">
-      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+      <span className={`grid size-11 shrink-0 place-items-center rounded-xl text-white ${KIND_TILE[v.kind]}`}>
         <KindIcon kind={v.kind} className="size-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="tabular break-words text-[17px] font-extrabold leading-tight tracking-wide">
+        <p className="tabular flex flex-wrap items-center gap-x-2 gap-y-0.5 break-words text-[17px] font-extrabold leading-tight tracking-wide">
           {v.plate_text}
+          <HolderChip holder={v.holder} />
         </p>
         <p className="break-words text-[13px] font-semibold text-muted-foreground">
           {[v.model, v.color].filter(Boolean).join(' · ') || t(KIND_LABELS[v.kind])}
@@ -382,6 +457,21 @@ function Row({
         </div>
       )}
     </Card>
+  );
+}
+
+function HolderChip({ holder }: { holder: VehicleRow['holder'] }) {
+  const { t } = useTranslation();
+  const cls =
+    holder === 'tenant'
+      ? 'bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300'
+      : holder === 'owner'
+        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+        : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300';
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-normal ${cls}`}>
+      {holder === 'tenant' ? t('Tenant') : holder === 'owner' ? t('Owner') : t('Not tagged')}
+    </span>
   );
 }
 

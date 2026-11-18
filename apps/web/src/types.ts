@@ -67,6 +67,9 @@ export type VehicleKind = 'car' | 'bike' | 'scooter' | 'other';
 /** A guest vehicle at the gate can also be tagged as a truck, which residents' own vehicles never are. */
 export type GateVehicleKind = VehicleKind | 'truck';
 
+/** Whose vehicle it is: the flat owner's own, or a tenant's (kiraedaar). null = not tagged yet. */
+export type VehicleHolder = 'owner' | 'tenant';
+
 export interface VehicleRow {
   id: string;
   plate: string;
@@ -74,6 +77,7 @@ export interface VehicleRow {
   kind: VehicleKind;
   model: string | null;
   color: string | null;
+  holder: VehicleHolder | null;
   unit_id: string;
   unit_code: string;
   unit_name: string;
@@ -144,6 +148,75 @@ export interface VehiclePromptInfo {
   unit_id?: string;
   unit_code?: string;
   unit_name?: string;
+}
+
+/** What my_vehicle_gate says about this flat: which vehicle popup (if any) to show. */
+export interface VehicleGate {
+  applies: boolean;
+  unit_id: string;
+  unit_code: string;
+  unit_name: string;
+  state: 'ask' | 'force' | 'done';
+  skips_used: number;
+  skips_left: number;
+  max_skips: number;
+  no_vehicle: boolean;
+  review_due: boolean;
+  vehicle_count: number;
+  untagged_count: number;
+  tenant_count: number;
+  last_confirmed_at: string | null;
+}
+
+export interface FeeChangeInfo {
+  id: string;
+  title: string;
+  old_share_paise: number;
+  new_share_paise: number;
+  increase_paise: number;
+  effective_from: string;
+  effective_period: string;
+  first_due_date: string | null;
+}
+
+export interface FeeChangePrompt {
+  show: boolean;
+  mode?: 'resident' | 'admin';
+  change?: FeeChangeInfo;
+  unit_code?: string;
+  acknowledged?: number;
+  total_flats?: number;
+}
+
+export interface FeeChangeOverview {
+  id: string;
+  title: string;
+  old_share_paise: number;
+  new_share_paise: number;
+  effective_from: string;
+  created_at: string;
+  flats: {
+    unit_id: string;
+    code: string;
+    name: string;
+    status: 'acknowledged' | 'seen_by_admin' | 'pending';
+    at: string | null;
+    who: string | null;
+  }[];
+}
+
+export interface VehicleCompliance {
+  flats: {
+    unit_id: string;
+    code: string;
+    name: string;
+    status: 'has_vehicles' | 'no_vehicle' | 'pending';
+    vehicle_count: number;
+    tenant_count: number;
+    skips_used: number;
+    no_vehicle_at: string | null;
+    confirmed_at: string | null;
+  }[];
 }
 
 export type UnitStatus =

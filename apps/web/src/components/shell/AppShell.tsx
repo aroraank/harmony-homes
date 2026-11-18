@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { NoticeGate } from './NoticeGate';
 import { WelcomeDialog } from '../WelcomeDialog';
 import { VehiclePrompt } from '../VehiclePrompt';
+import { FeeChangeDialog } from '../FeeChangeDialog';
 import { WelcomeBackToast } from '../WelcomeBackToast';
 import { CreditLine } from '../CreditLine';
 import { AdminFab } from './AdminFab';
@@ -195,6 +196,7 @@ export function AppShell() {
 
       {!viewOnly && <WelcomeDialog />}
       {!viewOnly && <WelcomeBackToast />}
+      {!viewOnly && <FeeChangeDialog />}
       {!viewOnly && <VehiclePrompt />}
       {!viewOnly && <NoticeGate />}
     </div>

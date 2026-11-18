@@ -54,7 +54,8 @@ import { Input } from '@/components/ui/input';
 import { PendingPaymentDialog } from '@/components/PendingPaymentDialog';
 import { FEEDBACK_SENT_KEY } from '@/lib/feedback';
 import { useDirectory } from '@/pages/contacts/ContactsPage';
-import { useVehicles } from '@/pages/vehicles/VehiclesPage';
+import { useVehicleGate } from '@/lib/vehicleGate';
+import { AdminNoticeCards } from '@/components/AdminNoticeCards';
 import { ReminderCards } from './reminders/ReminderCards';
 import type { Dashboard } from '@/types';
 
@@ -111,6 +112,7 @@ export default function HomePage() {
       {d.mine && <MyPending unitId={d.mine.unit_id} />}
       {d.mine && !viewOnly && <MyVehiclesNudge unitId={d.mine.unit_id} />}
       {d.admin && <AdminAttention d={d} monthlyOn={monthlyOn} />}
+      {d.admin && <AdminNoticeCards />}
 
       <div className="grid grid-cols-2 gap-2.5">
         <QuickLink to="/dues" icon={<Wallet />} label={t('My dues')} />
@@ -312,8 +314,9 @@ function QuickLink({ to, icon, label }: { to: string; icon: React.ReactNode; lab
 function MyVehiclesNudge({ unitId }: { unitId: string }) {
   const { t } = useTranslation();
   const m = useMember();
-  const vehicles = useVehicles(m.societyId);
-  if (!vehicles.data || vehicles.data.some((v) => v.unit_id === unitId)) return null;
+  const gate = useVehicleGate(m.societyId);
+  // only a flat that has neither added a vehicle nor said it has none
+  if (!gate.data?.applies || gate.data.state === 'done' || gate.data.unit_id !== unitId) return null;
   return (
     <Card className="border-sky-200 bg-gradient-to-br from-sky-50 to-card p-4 dark:border-sky-500/20 dark:from-sky-500/10">
       <div className="flex items-start gap-3">

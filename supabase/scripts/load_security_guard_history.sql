@@ -1,3 +1,5 @@
+-- NOTE (18 Nov 2026): this script loads HISTORY (Feb–Sep 2026) at ₹800 per flat, which is correct for those months.
+-- The rise to ₹1,000 per flat from the December 2026 event is applied by migration 20261118000001, not here.
 -- Harmony Homes — one-time load of the Security guard collection history (Feb 2026 → Sep 2026).
 -- Run in the Supabase SQL editor after the database migrations (up to 0009) are applied.
 -- If an earlier run of this script exists and nothing real has been recorded on top of it, that load is

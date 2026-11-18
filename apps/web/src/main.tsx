@@ -23,6 +23,16 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         action: { label: i18n.t('Update'), onClick: () => void updateSW(true) },
       });
     },
+    onRegisteredSW(_url, registration) {
+      // A relaunch already checks for a new version; this lets a long-running session (app left
+      // open in the background for hours) get the same "update available" prompt without the
+      // member needing to fully close and reopen the app.
+      if (!registration) return;
+      setInterval(() => void registration.update(), 45 * 60_000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') void registration.update();
+      });
+    },
   });
 }
 
