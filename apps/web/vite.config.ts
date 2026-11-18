@@ -3,9 +3,22 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 
+const BUILD_ID = String(Date.now());
+
+/** Emits /version.json so the app can detect a newer deploy even if the service worker check is missed. */
+const versionFile = () => ({
+  name: 'hh-version-file',
+  apply: 'build' as const,
+  generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD_ID }) });
+  },
+});
+
 export default defineConfig({
+  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   plugins: [
     react(),
+    versionFile(),
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',
