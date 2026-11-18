@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, CalendarClock, ShieldCheck, TrendingUp } from 'lucide-react';
@@ -27,6 +28,14 @@ export function FeeChangeDialog() {
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [closed, setClosed] = useState(false);
+  const { pathname } = useLocation();
+
+  // Re-check on every screen change: an unacknowledged flat must see the notice again wherever it goes next,
+  // even if an earlier check failed or was answered before the flat's data had loaded.
+  useEffect(() => {
+    if (!closed && ctx?.profile?.welcomed_at) void q.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const p = q.data;
   if (closed || !p?.show || !p.change) return null;

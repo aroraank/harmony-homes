@@ -181,6 +181,14 @@ do $$ begin begin perform public.vehicle_compliance(public._fvv('soc')); perform
 :as_r2
 select public.add_vehicle(public._fvv('soc'), public._fvv('u2'), 'HR26EF1111', 'car', null, null, 'owner');
 do $$ begin perform public._chk(not (public.my_vehicle_gate(public._fvv('soc'))->>'no_vehicle')::boolean, 'adding a vehicle clears the "none" flag'); end $$;
+-- a flat that registered and later removed every vehicle is asked again (it never said "none" afterwards)
+do $$ declare v jsonb; begin
+  perform public._chk(public.my_vehicle_gate(public._fvv('soc'))->>'state' = 'done', 'with a real vehicle the prompt stays away');
+  perform public.remove_vehicle((select id from public.vehicles where unit_id = public._fvv('u2') limit 1));
+  v := public.my_vehicle_gate(public._fvv('soc'));
+  perform public._chk(v->>'state' in ('ask', 'force') and (v->>'vehicle_count')::int = 0, 'removing the last vehicle brings the prompt back');
+end $$;
+select public.add_vehicle(public._fvv('soc'), public._fvv('u2'), 'HR26EF1111', 'car', null, null, 'owner');
 
 \echo '6. Three-monthly confirmation + bulk tenant removal'
 :as_owner

@@ -40,9 +40,10 @@ export function VehiclePrompt() {
   const [confirmNone, setConfirmNone] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // The fee notice comes first; if that query fails we do not block the vehicle prompt on it.
+  // The fee notice always comes first: the vehicle prompt waits until the notice is known to be acknowledged
+  // (a failed check is retried, not treated as "clear").
   const fee = useFeeChangePrompt(m.societyId, !!ctx?.profile?.welcomed_at && !!m.unit_id);
-  const feeClear = fee.isSuccess ? !fee.data.show : fee.isError;
+  const feeClear = fee.isSuccess && !fee.data.show;
   const gateQ = useVehicleGate(m.societyId, !!ctx?.profile?.welcomed_at && !!m.unit_id && feeClear);
   const vehicles = useVehicles(m.societyId);
   const g = gateQ.data;
