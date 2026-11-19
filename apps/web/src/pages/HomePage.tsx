@@ -1,11 +1,12 @@
 import { MyPending } from '@/components/MyPending';
+import { ExpenseDueBanner } from '@/components/ExpenseDue';
 import { CollectionsList } from '@/components/CollectionsList';
 import { SeriesMonthCard } from '@/components/SeriesMonthCard';
 import { SocietyPositionCompact, usePosition } from '@/components/SocietyPosition';
 import { SurplusBoard } from '@/components/SurplusBoard';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
@@ -33,7 +34,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { addDays, currentPeriod, istToday, formatDate, formatINR, periodLabel } from '@harmony/shared';
-import { errorMessage, supabase } from '@/lib/supabase';
+import { errorMessage, rpc, supabase } from '@/lib/supabase';
 import { reportPdf } from '@/lib/pdf';
 import { downloadBlob } from '@/lib/csv';
 import { useAuth, useMember } from '@/lib/auth';
@@ -97,6 +98,8 @@ export default function HomePage() {
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">{t('Namaste, {{n}} Ji', { n: firstName })}</h1>
       </div>
+
+      {d.admin && !viewOnly && <ExpenseDueBanner />}
 
       {d.mine && !viewOnly && <PendingPaymentDialog dash={d} />}
 
@@ -186,6 +189,7 @@ export default function HomePage() {
 
 function FixedExpenseRow({ f, isAdmin }: { f: Dashboard['fixed_expenses'][number]; isAdmin: boolean }) {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const { paid, skipped, overdue, dueSoon } = expenseState(f);
 
   const card = paid
@@ -209,6 +213,15 @@ function FixedExpenseRow({ f, isAdmin }: { f: Dashboard['fixed_expenses'][number
   );
 
   const canConfirm = isAdmin && f.draft_id && !paid && !skipped;
+  const reopen = async () => {
+    try {
+      await rpc('reopen_expense_draft', { p_draft_id: f.draft_id });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['drafts'] });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
 
   return (
     <Card className={cn('p-4', card)}>
@@ -239,6 +252,11 @@ function FixedExpenseRow({ f, isAdmin }: { f: Dashboard['fixed_expenses'][number
             {canConfirm && (
               <Button size="sm" variant="outline" asChild>
                 <Link to={`/admin/expense?draft=${f.draft_id}`}>{t('Mark as paid')}</Link>
+              </Button>
+            )}
+            {isAdmin && f.draft_id && skipped && (
+              <Button size="sm" variant="outline" onClick={() => void reopen()}>
+                {t('Re-open')}
               </Button>
             )}
           </div>

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Check, Pencil, Plus, Repeat, SkipForward, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { currentPeriod, formatINR, paiseToInput, parseRupeesToPaise, periodLabel } from '@harmony/shared';
+import { currentPeriod, istToday, formatINR, paiseToInput, parseRupeesToPaise, periodLabel } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { errorMessage, rpc, supabase } from '@/lib/supabase';
 import { unwrap, useExpenseCategories, useFunds } from '@/lib/queries';
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AmountInput } from '@/components/AmountInput';
-import { Input, NativeSelect } from '@/components/ui/input';
+import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -37,7 +37,7 @@ type Draft = {
   period: string;
   amount_paise: number;
   status: string;
-  expense_templates: { title: string; payee: string | null };
+  expense_templates: { title: string; payee: string | null; skippable?: boolean };
 };
 type Form = {
   open: boolean;
@@ -72,6 +72,8 @@ export default function ExpensesAdminPage() {
   const cats = useExpenseCategories(m.societyId);
   const [form, setForm] = useState<Form>(empty);
   const [busy, setBusy] = useState(false);
+  const [skipId, setSkipId] = useState<string | null>(null);
+  const [skipReason, setSkipReason] = useState('');
 
   const templates = useQuery({
     queryKey: ['templates', m.societyId],
@@ -90,7 +92,7 @@ export default function ExpensesAdminPage() {
       unwrap<Draft[]>(
         await supabase
           .from('expense_drafts')
-          .select('id, period, amount_paise, status, expense_templates(title, payee)')
+          .select('id, period, amount_paise, status, expense_templates(title, payee, skippable)')
           .eq('society_id', m.societyId)
           .eq('status', 'pending')
           .order('period'),
@@ -113,15 +115,26 @@ export default function ExpensesAdminPage() {
       toast.error(errorMessage(e));
     }
   };
-  const skip = async (id: string) => {
+  const skip = async () => {
+    if (!skipId) return;
+    if (skipReason.trim().length < 5) return toast.error(t('Please give a reason (at least 5 characters).'));
+    setBusy(true);
     try {
-      await rpc('skip_expense_draft', { p_draft_id: id });
+      await rpc('skip_expense_draft', { p_draft_id: skipId, p_reason: skipReason });
+      toast.success(t('Skipped. Everyone has been told.'));
+      setSkipId(null);
+      setSkipReason('');
       void qc.invalidateQueries({ queryKey: ['drafts'] });
       void qc.invalidateQueries({ queryKey: ['dashboard'] });
     } catch (e) {
       toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   };
+  // skipping is only possible for this month's payment, up to the 15th
+  const canSkip = (d: Draft) =>
+    d.expense_templates.skippable !== false && d.period === currentPeriod() && Number(istToday().slice(8, 10)) <= 15;
   const save = async () => {
     const paise = parseRupeesToPaise(form.amount);
     if (form.title.trim().length < 2) return toast.error(t('Title is required.'));
@@ -196,7 +209,12 @@ export default function ExpensesAdminPage() {
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  onClick={() => skip(d.id)}
+                  disabled={!canSkip(d)}
+                  title={canSkip(d) ? t('Skip this month') : d.expense_templates.skippable === false ? t('This payment cannot be skipped. Please mark it as paid.') : t('Cannot be skipped after the 15th. Please mark it as paid.')}
+                  onClick={() => {
+                    setSkipReason('');
+                    setSkipId(d.id);
+                  }}
                   aria-label={t('Skip this month')}
                 >
                   <SkipForward />
@@ -362,6 +380,32 @@ export default function ExpensesAdminPage() {
             </Button>
             <Button onClick={save} loading={busy}>
               {t('Save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!skipId} onOpenChange={(o) => !busy && !o && setSkipId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('Skip this payment?')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t('Everyone in the society will be told that this payment is not made yet, with your reason. You can re-open it later and mark it as paid.')}
+          </p>
+          <Textarea
+            value={skipReason}
+            onChange={(e) => setSkipReason(e.target.value)}
+            maxLength={300}
+            placeholder={t('Reason, e.g. not enough money collected yet')}
+            rows={3}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSkipId(null)} disabled={busy}>
+              {t('Cancel')}
+            </Button>
+            <Button variant="destructive" loading={busy} onClick={() => void skip()}>
+              {t('Skip and tell everyone')}
             </Button>
           </DialogFooter>
         </DialogContent>

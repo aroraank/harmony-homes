@@ -158,7 +158,7 @@ export function useNotifications(enabled = true) {
 
 /** After any money change, refresh everything that shows balances or dues. */
 export function invalidateMoney(qc: QueryClient) {
-  for (const k of ['dashboard', 'ledger', 'myDues', 'payInfo', 'monthReport', 'unitStatement', 'defaulters', 'eventReport', 'events', 'claims', 'trend', 'funds', 'drafts', 'duesAdmin', 'preview', 'dupRef', 'receipt', 'reminderCards']) {
+  for (const k of ['dashboard', 'ledger', 'myDues', 'payInfo', 'monthReport', 'unitStatement', 'defaulters', 'eventReport', 'events', 'claims', 'trend', 'funds', 'drafts', 'pendingFixed', 'duesAdmin', 'preview', 'dupRef', 'receipt', 'reminderCards']) {
     void qc.invalidateQueries({ queryKey: [k] });
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SalaryPeriodNote } from '@/components/SalaryPeriodNote';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +17,8 @@ import {
 } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
 import { AppError, errorMessage, newIdemKey, rpc, supabase } from '@/lib/supabase';
-import { invalidateMoney, unwrap, useDashboard, useExpenseCategories, useFunds } from '@/lib/queries';
+import { invalidateMoney, unwrap, useDashboard, useExpenseCategories, useFunds, useUnits } from '@/lib/queries';
+import { MODE_NEEDS_REF, usePendingFixed, type Contribution } from '@/lib/fixedExpenses';
 import { uploadFile } from '@/lib/files';
 import { useOnline } from '@/lib/online';
 import { MODE_LABELS } from '@/lib/utils';
@@ -31,6 +33,8 @@ import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/States';
+import { ExtraPayments, contributionPaise, contributionsTotal } from '@/components/ExtraPayments';
+import { PaymentBlockedDialog } from '@/components/PaymentBlockedDialog';
 
 type Draft = {
   id: string;
@@ -91,6 +95,12 @@ export default function RecordExpensePage() {
   const [dupConfirm, setDupConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [idem, setIdem] = useState(() => newIdemKey('exp'));
+  const [contribs, setContribs] = useState<Contribution[]>([]);
+  const [cmode, setCmode] = useState('cash');
+  const [shortReason, setShortReason] = useState('');
+  const [blockedOpen, setBlockedOpen] = useState(false);
+  const units = useUnits(m.societyId);
+  const pending = usePendingFixed(m.societyId, !!draftId);
   const [newCat, setNewCat] = useState<{ open: boolean; label: string }>({ open: false, label: '' });
 
   // Initialize the form from the draft exactly once (keyed by draft id) — funds/dashboard data
@@ -114,7 +124,11 @@ export default function RecordExpensePage() {
     setNote(`${d.expense_templates.title} — ${d.period}`);
   }, [draft.data, funds.data, dash.data]);
 
-  useEffect(() => setIdem(newIdemKey('exp')), [fundId, category, payee, amount, date, mode, ref]);
+  useEffect(() => setIdem(newIdemKey('exp')), [fundId, category, payee, amount, date, mode, ref, contribs, shortReason]);
+  useEffect(() => {
+    setContribs([]);
+    setShortReason('');
+  }, [draftId]);
 
   if (!m.can('record_expense')) return <EmptyState title={t('You do not have permission to do this.')} />;
 
@@ -151,6 +165,15 @@ export default function RecordExpensePage() {
   const fundBalance = dash.data?.funds.find((f) => f.id === fund?.id)?.balance_paise;
   const goesNegative = paise && fundBalance !== undefined && fundBalance - paise < 0;
 
+  // Recurring payment (e.g. guard salary): which months are unpaid, is it late, is the balance short?
+  const isFixed = !!draftId && draft.data?.status === 'pending';
+  const current = pending.data?.find((x) => x.draft_id === draftId);
+  const siblings = current ? (pending.data ?? []).filter((x) => x.template_id === current.template_id) : [];
+  const isLate = isFixed && !!draft.data && date > `${draft.data.period}-15`;
+  const shortBase = isFixed && paise && fundBalance !== undefined ? Math.max(0, paise - fundBalance) : 0;
+  const contributed = contributionsTotal(contribs);
+  const stillShort = Math.max(0, shortBase - contributed);
+
   const validate = () => {
     const e: Record<string, string> = {};
     if (!fund) e.fund = t('Choose a fund');
@@ -169,6 +192,18 @@ export default function RecordExpensePage() {
         },
       );
     }
+    if (isFixed) {
+      contribs.forEach((c) => {
+        const u = units.data?.find((x) => x.id === c.unit_id)?.code ?? '';
+        if (!contributionPaise(c)) e.extra = t('Enter the amount paid by {{f}}, or remove it.', { f: u });
+        else if (MODE_NEEDS_REF(cmode) && !UTR_RE.test(normalizeUtr(c.ref)))
+          e.extra = t('Enter the UTR / reference for {{f}} (6–30 letters or digits).', { f: u });
+      });
+      if (stillShort > 0 && shortReason.trim().length < 5)
+        e.short = t('The balance is still {{s}} short. Add extra payments, or give a reason (at least 5 characters) to go ahead.', {
+          s: formatINR(stillShort),
+        });
+    }
     setErrors(e);
     return !Object.keys(e).length;
   };
@@ -177,23 +212,50 @@ export default function RecordExpensePage() {
     setSaving(true);
     try {
       const path = file ? await uploadFile(m.societyId, 'ledger', 'expenses', file) : null;
-      await rpc('record_expense', {
-        p_fund_id: fund!.id,
-        p_category: category,
-        p_payee: payee || null,
-        p_amount_paise: paise,
-        p_entry_date: date,
-        p_payment_mode: mode,
-        p_reference_no: normalizeUtr(ref) || null,
-        p_note: note || null,
-        p_attachment_path: path,
-        p_idempotency_key: idem,
-        p_backdate_reason: needsReason ? backdateReason : null,
-        p_draft_id: draftId && draft.data?.status === 'pending' ? draftId : null,
-        p_allow_duplicate_reference: allowDuplicate,
-      });
+      if (isFixed) {
+        await rpc('pay_fixed_expense', {
+          p_draft_id: draftId,
+          p_amount_paise: paise,
+          p_entry_date: date,
+          p_payment_mode: mode,
+          p_reference_no: normalizeUtr(ref) || null,
+          p_note: note || null,
+          p_attachment_path: path,
+          p_idempotency_key: idem,
+          p_backdate_reason: needsReason ? backdateReason : null,
+          p_contributions: contribs.map((c) => ({
+            unit_id: c.unit_id,
+            amount_paise: contributionPaise(c),
+            payment_mode: cmode,
+            reference_no: normalizeUtr(c.ref) || null,
+          })),
+          p_shortfall_reason: stillShort > 0 ? shortReason : null,
+          p_allow_duplicate_reference: allowDuplicate,
+          p_fund_id: fund!.id,
+          p_category: category,
+          p_payee: payee || null,
+        });
+      } else {
+        await rpc('record_expense', {
+          p_fund_id: fund!.id,
+          p_category: category,
+          p_payee: payee || null,
+          p_amount_paise: paise,
+          p_entry_date: date,
+          p_payment_mode: mode,
+          p_reference_no: normalizeUtr(ref) || null,
+          p_note: note || null,
+          p_attachment_path: path,
+          p_idempotency_key: idem,
+          p_backdate_reason: needsReason ? backdateReason : null,
+          p_draft_id: null,
+          p_allow_duplicate_reference: allowDuplicate,
+        });
+      }
       invalidateMoney(qc);
-      toast.success(t('Expense of {{a}} recorded', { a: formatINR(paise ?? 0) }));
+      void qc.invalidateQueries({ queryKey: ['pendingFixed'] });
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success(isLate ? t('Expense of {{a}} recorded. Everyone is told the collection was late.', { a: formatINR(paise ?? 0) }) : t('Expense of {{a}} recorded', { a: formatINR(paise ?? 0) }));
       if (draftId) nav('/admin/expenses');
       else {
         setAmount('');
@@ -239,6 +301,10 @@ export default function RecordExpensePage() {
     ...(payee ? [{ label: t('Payee'), value: payee }] : []),
     { label: t('Date'), value: formatDate(date) },
     { label: t('Mode'), value: MODE_LABELS[mode] },
+    ...(isFixed && draft.data ? [{ label: t('For month'), value: current?.period_label ?? draft.data.period }] : []),
+    ...(isLate ? [{ label: t('Timing'), value: t('Late — members are told the collection was late') }] : []),
+    ...(contribs.length ? [{ label: t('Extra payments'), value: t('{{a}} from {{n}} flats', { a: formatINR(contributed), n: contribs.length }) }] : []),
+    ...(stillShort > 0 ? [{ label: t('Balance short by'), value: formatINR(stillShort) }] : []),
   ];
 
   return (
@@ -254,6 +320,23 @@ export default function RecordExpensePage() {
         </Alert>
       )}
       <Card className="space-y-4 p-4">
+        {isFixed && draft.data && draft.data.status === 'pending' && <SalaryPeriodNote period={draft.data.period} />}
+        {isFixed && siblings.length > 1 && (
+          <Field label={t('Which month is this payment for?')} hint={t('More than one month is unpaid. Choose the month you are marking as paid.')}>
+            <NativeSelect
+              value={draftId ?? ''}
+              onChange={(e) => nav(`/admin/expense?draft=${e.target.value}`, { replace: true })}
+              data-testid="month-picker"
+            >
+              {siblings.map((x) => (
+                <option key={x.draft_id} value={x.draft_id}>
+                  {x.period_label} — {formatINR(x.amount_paise)}
+                  {x.overdue ? ` (${t('overdue')})` : ''}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+        )}
         {lockedFund ? (
           <Field
             label={t('Paid from fund')}
@@ -334,7 +417,7 @@ export default function RecordExpensePage() {
             />
           </div>
         </Field>
-        {goesNegative && (
+        {goesNegative && !isFixed && (
           <Alert variant="warning">
             <AlertTriangle />
             {t(
@@ -344,6 +427,35 @@ export default function RecordExpensePage() {
                 b: formatINR(fundBalance ?? 0),
               },
             )}
+          </Alert>
+        )}
+        {shortBase > 0 && (
+          <>
+            <ExtraPayments
+              units={units.data ?? []}
+              shortfallPaise={shortBase}
+              value={contribs}
+              onChange={setContribs}
+              mode={cmode}
+              onModeChange={setCmode}
+            />
+            {errors.extra && <p className="text-sm font-medium text-destructive">{errors.extra}</p>}
+            {stillShort > 0 && (
+              <Field label={t('Go ahead even though the balance is short')} error={errors.short} hint={t('Only if the money will come later. This reason is shown to every member.')}>
+                <Input value={shortReason} onChange={(e) => setShortReason(e.target.value)} maxLength={150} placeholder={t('Reason, e.g. paid from the committee advance')} />
+              </Field>
+            )}
+            {current && (
+              <Button type="button" variant="outline" className="w-full" onClick={() => setBlockedOpen(true)}>
+                {t('Cannot pay yet? Alert everyone')}
+              </Button>
+            )}
+          </>
+        )}
+        {isLate && (
+          <Alert variant="warning" data-testid="late-note">
+            <AlertTriangle />
+            {t('This date is after the 15th of the month, so members will be told the collection was late.')}
           </Alert>
         )}
         <div className="grid grid-cols-2 gap-3">
@@ -434,6 +546,8 @@ export default function RecordExpensePage() {
         loading={saving}
         onConfirm={() => save(true)}
       />
+
+      {current && <PaymentBlockedDialog item={{ ...current, balance_paise: fundBalance ?? current.balance_paise, shortfall_paise: shortBase }} open={blockedOpen} onOpenChange={setBlockedOpen} />}
 
       <Dialog open={newCat.open} onOpenChange={(o) => setNewCat((s) => ({ ...s, open: o }))}>
         <DialogContent>

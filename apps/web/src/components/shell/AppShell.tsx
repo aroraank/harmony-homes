@@ -25,6 +25,7 @@ import { NoticeGate } from './NoticeGate';
 import { WelcomeDialog } from '../WelcomeDialog';
 import { VehiclePrompt } from '../VehiclePrompt';
 import { FeeChangeDialog } from '../FeeChangeDialog';
+import { ExpenseDueDialog } from '../ExpenseDue';
 import { WelcomeBackToast } from '../WelcomeBackToast';
 import { CreditLine } from '../CreditLine';
 import { AdminFab } from './AdminFab';
@@ -198,6 +199,7 @@ export function AppShell() {
       {!viewOnly && <WelcomeBackToast />}
       {!viewOnly && <FeeChangeDialog />}
       {!viewOnly && <VehiclePrompt />}
+      {!viewOnly && <ExpenseDueDialog />}
       {!viewOnly && <NoticeGate />}
     </div>
   );

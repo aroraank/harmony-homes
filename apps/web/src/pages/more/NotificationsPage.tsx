@@ -50,11 +50,11 @@ export default function NotificationsPage() {
                   }
                   if (n.url) nav(n.url);
                 }}
-                className={cn('flex w-full cursor-pointer items-start gap-3 px-4 py-3.5 text-left hover:bg-secondary/50', i > 0 && 'border-t', !n.read_at && 'bg-primary/[0.04]')}
+                className={cn('flex w-full cursor-pointer items-start gap-3 px-4 py-3.5 text-left hover:bg-secondary/50', i > 0 && 'border-t', !n.read_at && 'bg-primary/[0.04]', n.kind === 'expense_urgent' && 'border-l-4 border-l-red-600 bg-red-50 hover:bg-red-100')}
               >
-                <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', n.read_at ? 'bg-transparent' : 'bg-primary')} aria-hidden />
+                <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', n.read_at ? 'bg-transparent' : n.kind === 'expense_urgent' ? 'bg-red-600' : 'bg-primary')} aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <p className={cn('text-[14.5px]', n.read_at ? 'font-medium' : 'font-bold')}>{n.title}</p>
+                  <p className={cn('text-[14.5px]', n.read_at ? 'font-medium' : 'font-bold', n.kind === 'expense_urgent' && 'text-red-700')}>{n.title}</p>
                   {n.body && <p className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">{n.body}</p>}
                   <p className="mt-1 text-[11.5px] text-muted-foreground">{relativeAge(n.created_at)}</p>
                 </div>
