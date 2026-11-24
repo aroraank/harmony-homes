@@ -27,6 +27,7 @@ import { brand } from '@/brand';
 import { cn } from '@/lib/utils';
 import { VehicleKindChip, VehicleKindTile } from '@/components/VehicleKindChip';
 import { GateVisitLogList } from '@/components/GateVisitLogList';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -130,9 +131,45 @@ export default function GatePage() {
   const board = useQuery({
     queryKey: ['gateBoard', societyId],
     enabled: !!societyId,
-    refetchInterval: 60_000,
+    // Poll fast while something is waiting on a flat's decision, so the moment they answer shows up
+    // here in a few seconds, not up to a minute late — that's what the decision popup below relies on.
+    refetchInterval: (q) => ((q.state.data?.awaiting?.length ?? 0) > 0 ? 4_000 : 60_000),
     queryFn: () => rpc<GateBoard>('gate_board', { p_society: societyId }),
   });
+
+  // A resident just decided one of the "waiting" entries from somewhere else (their own phone) —
+  // pop a big, unmissable, colour-coded alert so the guard notices even without reading the board.
+  // Skipped for anything the guard themselves just decided via the phone-override dialog below.
+  const [decisionQueue, setDecisionQueue] = useState<
+    { id: string; plate_text: string; unit_name: string | null; decision: 'approved' | 'denied' }[]
+  >([]);
+  const prevAwaiting = useRef<Set<string>>(new Set());
+  const mySelfResolved = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!board.data) return;
+    const nowAwaiting = new Set(board.data.awaiting.map((v) => v.id));
+    for (const id of prevAwaiting.current) {
+      if (nowAwaiting.has(id) || mySelfResolved.current.has(id)) continue;
+      const approvedRow = board.data.inside.find((v) => v.id === id);
+      if (approvedRow) {
+        setDecisionQueue((q) => [
+          ...q,
+          { id, plate_text: approvedRow.plate_text, unit_name: approvedRow.unit_name, decision: 'approved' },
+        ]);
+        continue;
+      }
+      const deniedRow = board.data.recent_out.find((v) => v.id === id && v.approval_status === 'denied');
+      if (deniedRow) {
+        setDecisionQueue((q) => [
+          ...q,
+          { id, plate_text: deniedRow.plate_text, unit_name: deniedRow.unit_name, decision: 'denied' },
+        ]);
+      }
+    }
+    prevAwaiting.current = nowAwaiting;
+  }, [board.data]);
+  const popup = decisionQueue[0] ?? null;
+  const dismissPopup = () => setDecisionQueue((q) => q.slice(1));
 
   useEffect(() => {
     box.current?.focus();
@@ -196,6 +233,7 @@ export default function GatePage() {
         p_via: 'guard_override',
         p_note: decideNote,
       });
+      mySelfResolved.current.add(decideFor.id);
       toast.success(decideFor.decision === 'approve' ? t('Let in') : t('Kept out'));
       setDecideFor(null);
       setDecideNote('');
@@ -552,18 +590,34 @@ export default function GatePage() {
               <h2 className="mb-2 mt-6 flex items-center gap-2 text-[14px] font-bold text-muted-foreground">
                 <UserRound className="size-4" /> {t('Went out recently')}
               </h2>
-              <Card className="divide-y">
+              <Card className="divide-y overflow-hidden p-0">
                 {(board.data?.recent_out ?? []).map((v) => (
-                  <div key={v.id} className="px-3.5 py-2.5">
+                  <div
+                    key={v.id}
+                    className={cn(
+                      'border-l-4 px-3.5 py-2.5',
+                      v.approval_status === 'denied'
+                        ? 'border-l-rose-500 bg-rose-50 dark:bg-rose-500/10'
+                        : v.approval_status === 'approved'
+                          ? 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-500/10'
+                          : 'border-l-transparent',
+                    )}
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
                         <VehicleKindChip kind={v.kind} />
                         <span className="tabular truncate text-[15px] font-bold tracking-wide">{v.plate_text}</span>
+                        {v.approval_status === 'denied' && <Badge variant="danger">{t('Denied')}</Badge>}
+                        {v.approval_status === 'approved' && <Badge variant="success">{t('Approved')}</Badge>}
                       </div>
                       <span className="shrink-0 text-right text-[11.5px] font-semibold text-muted-foreground">
                         {dt12(v.in_at)} → {v.out_at ? dt12(v.out_at) : ''}
                       </span>
                     </div>
+                    <p className="mt-1 break-words text-[12.5px] font-semibold text-muted-foreground">
+                      {v.unit_name ?? t('Flat not known')}
+                      {v.unit_code ? ` · ${v.unit_code}` : ''}
+                    </p>
                     {v.out_at && (
                       <p className="mt-1 text-[12.5px]">
                         <StayLabel inIso={v.in_at} outIso={v.out_at} />
@@ -631,6 +685,52 @@ export default function GatePage() {
               {decideFor?.decision === 'approve' ? t('Yes, let it in') : t('Yes, keep it out')}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Big colour-coded "the flat just decided" alert — green for let-in, red for keep-out. */}
+      <Dialog open={!!popup}>
+        <DialogContent
+          dismissible={false}
+          hideClose
+          className={cn(
+            'border-4 text-center',
+            popup?.decision === 'approved'
+              ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/15'
+              : 'border-rose-500 bg-rose-50 dark:bg-rose-500/15',
+          )}
+        >
+          <DialogHeader>
+            <DialogTitle className="sr-only">{t('Flat decision')}</DialogTitle>
+          </DialogHeader>
+          <span
+            className={cn(
+              'mx-auto grid size-16 place-items-center rounded-full text-white',
+              popup?.decision === 'approved' ? 'bg-emerald-600' : 'bg-rose-600',
+            )}
+          >
+            {popup?.decision === 'approved' ? <CheckCircle2 className="size-9" /> : <X className="size-9" />}
+          </span>
+          <p
+            className={cn(
+              'mt-3 text-[22px] font-extrabold leading-tight',
+              popup?.decision === 'approved' ? 'text-emerald-900 dark:text-emerald-100' : 'text-rose-900 dark:text-rose-100',
+            )}
+          >
+            {popup?.decision === 'approved' ? t('Approved — let it in!') : t('Kept out — do not let it in')}
+          </p>
+          <p className="tabular mt-1 text-[26px] font-extrabold tracking-wide">{popup?.plate_text}</p>
+          <p className="mt-0.5 text-[15px] font-semibold text-muted-foreground">{popup?.unit_name}</p>
+          <Button
+            size="xl"
+            className={cn(
+              'mt-4 h-16 w-full text-[18px]',
+              popup?.decision === 'approved' ? 'bg-emerald-600 hover:brightness-110' : 'bg-rose-600 hover:brightness-110',
+            )}
+            onClick={dismissPopup}
+          >
+            {t('OK')}
+          </Button>
         </DialogContent>
       </Dialog>
 
