@@ -101,6 +101,25 @@ export interface GateVisitRow {
   unit_name: string | null;
   note?: string | null;
   kind?: GateVehicleKind | null;
+  approval_status?: VehicleApprovalStatus;
+}
+
+export type VehicleApprovalStatus = 'auto' | 'pending' | 'approved' | 'denied';
+
+export interface VehicleApproval {
+  id: string;
+  plate_text: string;
+  kind: GateVehicleKind | null;
+  in_at: string;
+  unit_id: string;
+  unit_code: string | null;
+  unit_name: string | null;
+  note: string | null;
+}
+
+export interface VehicleApprovalDetail extends VehicleApproval {
+  approval_status: VehicleApprovalStatus;
+  out_at: string | null;
 }
 
 export interface GateLookup {
@@ -122,6 +141,7 @@ export interface GateLookup {
 
 export interface GateBoard {
   inside: GateVisitRow[];
+  awaiting: GateVisitRow[];
   recent_out: GateVisitRow[];
   in_today: number;
   society_name: string;
@@ -131,6 +151,61 @@ export interface VisitorLogRow extends GateVisitRow {
   in_by: string | null;
   out_by: string | null;
   minutes: number | null;
+}
+
+/** One row of the searchable gate-visit history — who approved it, when, how, and how long it waited. */
+export interface GateVisitLogRow {
+  id: string;
+  plate_text: string;
+  kind: GateVehicleKind | null;
+  in_at: string;
+  out_at: string | null;
+  unit_id: string | null;
+  unit_code: string | null;
+  unit_name: string | null;
+  note: string | null;
+  approval_status: VehicleApprovalStatus;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  approved_via: 'resident' | 'guard_override' | null;
+  approval_note: string | null;
+  in_by_name: string | null;
+  waited_seconds: number | null;
+}
+
+export interface GateVisitLogResult {
+  rows: GateVisitLogRow[];
+  total: number;
+  limit: number;
+  offset: number;
+  role: 'admin' | 'guard' | 'resident';
+}
+
+export interface UnitOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/** One flat's approval-speed row for the admin report (resident decisions only, not guard overrides). */
+export interface VehicleApprovalStatRow {
+  unit_id: string;
+  unit_code: string;
+  unit_name: string;
+  decisions: number;
+  avg_wait_seconds: number;
+  fastest_seconds: number;
+  slowest_seconds: number;
+  last_decided_at: string;
+}
+
+/** The resident's own "fun fact": only ever the flats quicker than them, never the slower ones. */
+export interface MyApprovalSpeed {
+  eligible: boolean;
+  my_avg_seconds?: number;
+  my_decisions?: number;
+  faster_flats?: { unit_code: string; unit_name: string; avg_seconds: number }[];
+  faster_count?: number;
 }
 
 export interface GuardRow {
@@ -454,6 +529,8 @@ export interface EventRow {
   created_at: string;
   closed_at: string | null;
   close_note: string | null;
+  archived_at?: string | null;
+  archive_reason?: string | null;
 }
 
 export interface EventReport {

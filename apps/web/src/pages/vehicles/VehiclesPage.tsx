@@ -20,6 +20,8 @@ import { useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { useUnits } from '@/lib/queries';
 import { useVehicles } from '@/lib/vehicleGate';
+import { GateVisitLogList } from '@/components/GateVisitLogList';
+import { ApprovalSpeedFunFact, ApprovalSpeedReport } from '@/components/VehicleApprovalSpeed';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { EmptyState, QueryState } from '@/components/States';
 import { Field } from '@/components/Field';
@@ -201,6 +203,8 @@ export default function VehiclesPage() {
 
   const directory = (
     <>
+      {!search && m.unit_id && <ApprovalSpeedFunFact societyId={m.societyId} />}
+
       <div className="relative">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -284,20 +288,28 @@ export default function VehiclesPage() {
         }
       />
 
-      {m.isAdmin ? (
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="directory">{t('Directory')}</TabsTrigger>
-            <TabsTrigger value="reports">{t('Reports')}</TabsTrigger>
-          </TabsList>
-          <TabsContent value="directory">{directory}</TabsContent>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="directory">{t('Directory')}</TabsTrigger>
+          <TabsTrigger value="log">{t('Log')}</TabsTrigger>
+          {m.isAdmin && <TabsTrigger value="speed">{t('Speed')}</TabsTrigger>}
+          {m.isAdmin && <TabsTrigger value="reports">{t('Reports')}</TabsTrigger>}
+        </TabsList>
+        <TabsContent value="directory">{directory}</TabsContent>
+        <TabsContent value="log">
+          <GateVisitLogList societyId={m.societyId} showUnitFilter={m.isAdmin} />
+        </TabsContent>
+        {m.isAdmin && (
+          <TabsContent value="speed">
+            <ApprovalSpeedReport societyId={m.societyId} />
+          </TabsContent>
+        )}
+        {m.isAdmin && (
           <TabsContent value="reports">
             <VehicleReports vehicles={all} totalUnits={units.data?.length ?? 0} loading={list.isLoading} />
           </TabsContent>
-        </Tabs>
-      ) : (
-        directory
-      )}
+        )}
+      </Tabs>
 
       {form && (
         <Dialog open onOpenChange={(o) => !o && setForm(null)}>

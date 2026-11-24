@@ -54,6 +54,7 @@ const SettingsPage = lazy(() => import('./pages/admin/SettingsPage'));
 const AuditPage = lazy(() => import('./pages/admin/AuditPage'));
 const AlertsPage = lazy(() => import('./pages/admin/AlertsPage'));
 const VehiclesPage = lazy(() => import('./pages/vehicles/VehiclesPage'));
+const VehicleApprovalPage = lazy(() => import('./pages/vehicles/VehicleApprovalPage'));
 const VisitorLogPage = lazy(() => import('./pages/admin/VisitorLogPage'));
 const GateLoginsPage = lazy(() => import('./pages/admin/GateLoginsPage'));
 const GatePage = lazy(() => import('./pages/gate/GatePage'));
@@ -77,7 +78,8 @@ function Protected() {
         </div>
       </div>
     );
-  if (ctx?.profile?.must_change_password) return <Navigate to="/change-password" replace />;
+  if (ctx?.profile?.must_change_password)
+    return <Navigate to="/change-password" replace state={{ from: loc.pathname }} />;
   // A gate (security guard) login is not a member: it only ever sees the gate screen.
   if (!active && ctx?.guard)
     return (
@@ -162,6 +164,14 @@ export default function App() {
         <Route path="concerns/:id" element={<ConcernDetailPage />} />
         <Route path="contacts" element={<ContactsPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
+        <Route
+          path="vehicles/approve/:id"
+          element={
+            <Lazy>
+              <VehicleApprovalPage />
+            </Lazy>
+          }
+        />
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="more" element={<MorePage />} />
         <Route path="profile" element={<ProfilePage />} />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Check, ShieldCheck, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ import { AuthLayout } from './AuthLayout';
 export default function ChangePasswordPage() {
   const { t } = useTranslation();
   const nav = useNavigate();
+  const loc = useLocation() as { state?: { from?: string } };
   const { session, loading, ctx, refreshContext, signOut } = useAuth();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -44,7 +45,7 @@ export default function ChangePasswordPage() {
       await invokeFn('account', { action: 'change_password', current_password: current, new_password: next });
       await refreshContext();
       toast.success(t('PIN changed'));
-      nav('/', { replace: true });
+      nav(loc.state?.from ?? '/', { replace: true });
     } catch (err) {
       setError(errorMessage(err));
     } finally {

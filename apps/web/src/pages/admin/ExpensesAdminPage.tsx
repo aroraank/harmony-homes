@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Check, Pencil, Plus, Repeat, SkipForward, Wand2 } from 'lucide-react';
+import { Check, Pencil, Plus, Repeat, SkipForward, Trash2, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { currentPeriod, istToday, formatINR, paiseToInput, parseRupeesToPaise, periodLabel } from '@harmony/shared';
 import { useMember } from '@/lib/auth';
@@ -74,6 +74,8 @@ export default function ExpensesAdminPage() {
   const [busy, setBusy] = useState(false);
   const [skipId, setSkipId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Template | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const templates = useQuery({
     queryKey: ['templates', m.societyId],
@@ -130,6 +132,23 @@ export default function ExpensesAdminPage() {
       toast.error(errorMessage(e));
     } finally {
       setBusy(false);
+    }
+  };
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try {
+      await rpc('delete_expense_template', { p_society: m.societyId, p_id: deleteTarget.id });
+      toast.success(t('"{{title}}" removed from the ledger', { title: deleteTarget.title }));
+      setDeleteTarget(null);
+      void qc.invalidateQueries({ queryKey: ['templates'] });
+      void qc.invalidateQueries({ queryKey: ['drafts'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['ledger'] });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setDeleteBusy(false);
     }
   };
   // skipping is only possible for this month's payment, up to the 15th
@@ -277,11 +296,43 @@ export default function ExpensesAdminPage() {
                 >
                   <Pencil />
                 </Button>
+                {m.isSuperAdmin && (
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    aria-label={t('Delete')}
+                    onClick={() => setDeleteTarget(tp)}
+                  >
+                    <Trash2 />
+                  </Button>
+                )}
               </div>
             ))}
           </Card>
         )}
       </QueryState>
+
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && !deleteBusy && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('Delete "{{title}}"?', { title: deleteTarget?.title })}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t(
+              'Every payment this recurring expense ever made will be removed from the ledger too — it will not show there, or anywhere else. This cannot be undone.',
+            )}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>
+              {t('Cancel')}
+            </Button>
+            <Button variant="destructive" loading={deleteBusy} onClick={confirmDelete}>
+              <Trash2 /> {t('Delete everywhere')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={form.open} onOpenChange={(o) => !o && setForm(empty)}>
         <DialogContent>

@@ -96,7 +96,14 @@ export function useEvents(societyId: string) {
   return useQuery({
     queryKey: ['events', societyId],
     queryFn: async () =>
-      unwrap<EventRow[]>(await supabase.from('events').select('*').eq('society_id', societyId).order('created_at', { ascending: false })),
+      unwrap<EventRow[]>(
+        await supabase
+          .from('events')
+          .select('*')
+          .eq('society_id', societyId)
+          .is('archived_at', null)
+          .order('created_at', { ascending: false }),
+      ),
   });
 }
 

@@ -55,7 +55,7 @@ import { Input } from '@/components/ui/input';
 import { PendingPaymentDialog } from '@/components/PendingPaymentDialog';
 import { FEEDBACK_SENT_KEY } from '@/lib/feedback';
 import { useDirectory } from '@/pages/contacts/ContactsPage';
-import { useVehicleGate } from '@/lib/vehicleGate';
+import { useVehicleApprovals, useVehicleGate } from '@/lib/vehicleGate';
 import { AdminNoticeCards } from '@/components/AdminNoticeCards';
 import { ReminderCards } from './reminders/ReminderCards';
 import type { Dashboard } from '@/types';
@@ -68,6 +68,38 @@ function expenseState(f: Dashboard['fixed_expenses'][number]) {
   const overdue = !paid && !skipped && f.draft_status === 'pending' && daysLeft < 0;
   const dueSoon = !paid && !skipped && !overdue && f.draft_status === 'pending' && daysLeft <= 2;
   return { paid, skipped, overdue, dueSoon, urgent: overdue || dueSoon };
+}
+
+/** First thing on the home page: a guest vehicle is waiting at the gate for this flat to approve. */
+function VehicleApprovalBanner({ societyId }: { societyId: string }) {
+  const { t } = useTranslation();
+  const q = useVehicleApprovals(societyId);
+  const list = q.data ?? [];
+  if (list.length === 0) return null;
+  const first = list[0];
+  return (
+    <Link
+      to={`/vehicles/approve/${first.id}`}
+      className="block animate-fade-up rounded-2xl border-2 border-amber-400/70 bg-amber-50 p-4 shadow-card transition-colors hover:bg-amber-100 dark:bg-amber-400/10 dark:hover:bg-amber-400/15"
+    >
+      <div className="flex items-center gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-600 text-white">
+          <Car className="size-6" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-extrabold leading-tight text-amber-900 dark:text-amber-200">
+            {t('Guest vehicle at the gate')}
+          </p>
+          <p className="truncate text-[13px] font-semibold text-amber-800/80 dark:text-amber-300/80">
+            {list.length > 1
+              ? t('{{plate}} and {{n}} more waiting for your OK', { plate: first.plate_text, n: list.length - 1 })
+              : t('{{plate}} is waiting for your OK to come in', { plate: first.plate_text })}
+          </p>
+        </div>
+        <ArrowRight className="size-5 shrink-0 text-amber-700" />
+      </div>
+    </Link>
+  );
 }
 
 export default function HomePage() {
@@ -98,6 +130,8 @@ export default function HomePage() {
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">{t('Namaste, {{n}} Ji', { n: firstName })}</h1>
       </div>
+
+      {!viewOnly && <VehicleApprovalBanner societyId={m.societyId} />}
 
       {d.admin && !viewOnly && <ExpenseDueBanner />}
 

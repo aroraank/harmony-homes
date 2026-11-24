@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
+  Archive,
   CalendarCheck2,
   Download,
   FileText,
@@ -50,7 +51,8 @@ export default function EventDetailPage() {
     enabled: !!id,
     queryFn: () => rpc<EventReport>('event_report', { p_event_id: id }),
   });
-  const [action, setAction] = useState<null | 'open' | 'delete' | 'close'>(null);
+  const [action, setAction] = useState<null | 'open' | 'delete' | 'close' | 'archive'>(null);
+  const [archiveReason, setArchiveReason] = useState('');
   const [settle, setSettle] = useState(true);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -95,6 +97,12 @@ export default function EventDetailPage() {
               ? t('Closed. Shortfall {{a}} covered from General.', { a: formatINR(-res.moved_paise) })
               : t('Event closed'),
         );
+      } else if (action === 'archive') {
+        await rpc('archive_event', { p_event_id: e.id, p_reason: archiveReason || null });
+        toast.success(t('Event removed from the ledger and the society position'));
+        invalidateMoney(qc);
+        nav('/events', { replace: true });
+        return;
       }
       invalidateMoney(qc);
       nudgePush();
@@ -332,6 +340,15 @@ export default function EventDetailPage() {
               <CalendarCheck2 /> {t('Close event')}
             </Button>
           )}
+          {e.status !== 'draft' && !e.archived_at && m.isSuperAdmin && (
+            <Button
+              variant="outline"
+              className="col-span-2 text-destructive hover:text-destructive"
+              onClick={() => setAction('archive')}
+            >
+              <Archive /> {t('Remove from ledger')}
+            </Button>
+          )}
         </div>
       )}
 
@@ -478,6 +495,30 @@ export default function EventDetailPage() {
             })}
           </p>
         )}
+      </ConfirmSheet>
+      <ConfirmSheet
+        open={action === 'archive'}
+        onOpenChange={(o) => !o && setAction(null)}
+        title={t('Remove this event from the ledger?')}
+        description={t(
+          'All payments and expenses collected under this event disappear from the society ledger, dues and balances. This cannot be undone from here.',
+        )}
+        confirmLabel={t('Remove everywhere')}
+        destructive
+        loading={busy}
+        onConfirm={run}
+      >
+        <div className="mt-1 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-[12.5px] leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <p className="font-bold">{t('Please read before removing')}</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            <li>{t('Every payment and expense tied to this event is hidden from the ledger, society position and all reports.')}</li>
+            <li>{t('Any unpaid dues for this event are waived for every flat.')}</li>
+            <li>{t('The event itself disappears from the events list.')}</li>
+          </ul>
+        </div>
+        <Field label={t('Reason')} optional className="mt-3">
+          <Input value={archiveReason} onChange={(ev) => setArchiveReason(ev.target.value)} maxLength={300} />
+        </Field>
       </ConfirmSheet>
       <ConfirmSheet
         open={editOpen}

@@ -1,18 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Bike, Car, CheckCircle2, Clock, LogOut, MoreHorizontal, RotateCcw, Search, Truck, UserRound } from 'lucide-react';
+import {
+  Bike,
+  Car,
+  CheckCircle2,
+  Clock,
+  History,
+  Hourglass,
+  LogOut,
+  MoreHorizontal,
+  PhoneCall,
+  RotateCcw,
+  Search,
+  Truck,
+  UserRound,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime12, splitMinutes } from '@harmony/shared';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { setLanguage } from '@/lib/i18n';
+import { nudgePush } from '@/lib/push';
 import { brand } from '@/brand';
 import { cn } from '@/lib/utils';
 import { VehicleKindChip, VehicleKindTile } from '@/components/VehicleKindChip';
+import { GateVisitLogList } from '@/components/GateVisitLogList';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/input';
 import type { GateBoard, GateFlat, GateLookup, GateVehicleKind, GateVisitRow } from '@/types';
 
 /** Vehicle-type buttons the guard taps when marking a guest IN — same colours as the VehicleKindChip
@@ -98,6 +116,9 @@ export default function GatePage() {
   const [kind, setKind] = useState<GateVehicleKind | null>(null);
   const [busy, setBusy] = useState(false);
   const [outFor, setOutFor] = useState<{ id: string; plate_text: string } | null>(null);
+  const [decideFor, setDecideFor] = useState<{ id: string; plate_text: string; decision: 'approve' | 'deny' } | null>(null);
+  const [decideNote, setDecideNote] = useState('');
+  const [showLog, setShowLog] = useState(false);
   const box = useRef<HTMLInputElement>(null);
 
   const flats = useQuery({
@@ -143,15 +164,41 @@ export default function GatePage() {
   const markIn = async () => {
     setBusy(true);
     try {
-      await rpc('gate_check_in', {
+      const res = await rpc<{ approval_status: string }>('gate_check_in', {
         p_society: societyId,
         p_plate: plate,
         p_unit_id: flatId === 'none' ? null : flatId,
         p_note: null,
         p_kind: kind,
       });
-      toast.success(t('Entry saved — IN'));
+      toast.success(
+        res.approval_status === 'pending'
+          ? t('Sent to the flat for approval. It will not come in until they say yes.')
+          : t('Entry saved — IN'),
+      );
+      nudgePush();
       reset();
+      refresh();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const decide = async () => {
+    if (!decideFor) return;
+    setBusy(true);
+    try {
+      await rpc('approve_gate_visit', {
+        p_visit_id: decideFor.id,
+        p_decision: decideFor.decision,
+        p_via: 'guard_override',
+        p_note: decideNote,
+      });
+      toast.success(decideFor.decision === 'approve' ? t('Let in') : t('Kept out'));
+      setDecideFor(null);
+      setDecideNote('');
       refresh();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -176,6 +223,7 @@ export default function GatePage() {
   };
 
   const inside = board.data?.inside ?? [];
+  const awaiting = board.data?.awaiting ?? [];
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col bg-background">
@@ -194,6 +242,14 @@ export default function GatePage() {
               {guard?.society_name} · {ctx?.profile?.full_name}
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowLog(true)}
+            className="grid size-12 cursor-pointer place-items-center rounded-full hover:bg-white/15"
+            aria-label={t('Vehicle log')}
+          >
+            <History className="size-[22px]" />
+          </button>
           <button
             type="button"
             onClick={() => setLanguage(hindi ? 'en' : 'hi')}
@@ -398,6 +454,57 @@ export default function GatePage() {
           </div>
         )}
 
+        {/* Guest vehicles whose flat hasn't answered yet */}
+        {awaiting.length > 0 && (
+          <div className="mt-7">
+            <h2 className="mb-2 flex items-center gap-2 text-[15px] font-extrabold text-amber-700 dark:text-amber-400">
+              <Hourglass className="size-5" />
+              {t('Waiting for the flat to approve')} ({awaiting.length})
+            </h2>
+            <div className="space-y-2">
+              {awaiting.map((v: GateVisitRow) => (
+                <Card key={v.id} className="flex items-center gap-3 border-amber-400/60 bg-amber-50 p-3 dark:bg-amber-400/10">
+                  <VehicleKindTile kind={v.kind} className="size-14" />
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="tabular break-words text-[19px] font-extrabold leading-tight tracking-wide">
+                        {v.plate_text}
+                      </span>
+                      <span className="break-words text-[13.5px] font-bold text-muted-foreground">
+                        {v.unit_name ?? t('Flat not known')}
+                      </span>
+                    </p>
+                    <p className="mt-1 break-words text-[13px] font-semibold text-muted-foreground">{dt12(v.in_at)}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-1.5">
+                    <Button
+                      size="sm"
+                      className="h-10 bg-emerald-600 px-3 text-white hover:brightness-110"
+                      onClick={() => {
+                        setDecideNote('');
+                        setDecideFor({ id: v.id, plate_text: v.plate_text, decision: 'approve' });
+                      }}
+                    >
+                      <PhoneCall className="size-4" /> {t('Approve')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-10 px-3"
+                      onClick={() => {
+                        setDecideNote('');
+                        setDecideFor({ id: v.id, plate_text: v.plate_text, decision: 'deny' });
+                      }}
+                    >
+                      <X className="size-4" /> {t('Keep out')}
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 3. Who is inside right now */}
         <div className="mt-7">
           <h2 className="mb-2 flex items-center gap-2 text-[15px] font-extrabold">
@@ -489,6 +596,50 @@ export default function GatePage() {
               {t('Yes, OUT')}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!decideFor} onOpenChange={(o) => !o && setDecideFor(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-[20px]">
+              {decideFor?.decision === 'approve' ? t('Let this vehicle in?') : t('Keep this vehicle out?')}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="tabular text-center text-[26px] font-extrabold tracking-wide">{decideFor?.plate_text}</p>
+          <p className="text-center text-[13px] text-muted-foreground">
+            {t('Only do this if the flat is not able to open the app — for example, you already spoke to them on the phone.')}
+          </p>
+          <Textarea
+            value={decideNote}
+            onChange={(e) => setDecideNote(e.target.value)}
+            placeholder={t('e.g. Spoke to P2-GF on the phone, they said yes')}
+            maxLength={200}
+            className="min-h-20"
+          />
+          <DialogFooter>
+            <Button size="xl" variant="outline" className="h-14 text-[16px]" onClick={() => setDecideFor(null)}>
+              {t('Cancel')}
+            </Button>
+            <Button
+              size="xl"
+              className={cn('h-14 text-[16px]', decideFor?.decision === 'approve' ? 'bg-emerald-600 hover:brightness-110' : '')}
+              loading={busy}
+              disabled={decideNote.trim().length < 3}
+              onClick={() => void decide()}
+            >
+              {decideFor?.decision === 'approve' ? t('Yes, let it in') : t('Yes, keep it out')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showLog} onOpenChange={setShowLog}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-[20px]">{t('Vehicle log')}</DialogTitle>
+          </DialogHeader>
+          {showLog && <GateVisitLogList societyId={societyId} showUnitFilter={false} compact />}
         </DialogContent>
       </Dialog>
     </div>
