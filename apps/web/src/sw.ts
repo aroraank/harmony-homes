@@ -36,6 +36,11 @@ self.addEventListener('push', (event) => {
     data = { title: 'Harmony Homes', body: event.data?.text() };
   }
   const title = data.title || 'Harmony Homes';
+  // A guest vehicle waiting at the gate is urgent and easy to miss among other pings -- it gets its own
+  // long, distinct vibration pattern and stays on screen (requireInteraction) until the resident acts,
+  // same treatment as a 'notice'. renotify makes a second approval re-vibrate/re-alert even while the
+  // first one is still showing, instead of silently updating it.
+  const isVehicleApproval = data.kind === 'vehicle_approval';
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body ?? '',
@@ -43,7 +48,9 @@ self.addEventListener('push', (event) => {
       badge: '/icons/icon-192.png',
       tag: data.tag,
       data: { url: data.url ?? '/' },
-      requireInteraction: data.kind === 'notice',
+      requireInteraction: data.kind === 'notice' || isVehicleApproval,
+      renotify: isVehicleApproval,
+      vibrate: isVehicleApproval ? [250, 120, 250, 120, 400] : undefined,
     } as NotificationOptions),
   );
 });

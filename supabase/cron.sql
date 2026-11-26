@@ -7,10 +7,13 @@ create extension if not exists pg_net;
 -- Every day at 06:05 IST (00:35 UTC): monthly dues on the 1st, recurring expense drafts, reminders, location retention.
 select cron.schedule('hh-daily-jobs', '35 0 * * *', $$ select public.run_daily_jobs(); $$);
 
--- Every 5 minutes: deliver any queued push notifications (the app also triggers this instantly after actions).
+-- Safety-net only now: the database fires push-dispatch INSTANTLY on every new notification via a
+-- trigger (see migration 20261126000005_instant_push_dispatch.sql) using pg_net directly -- this cron job
+-- is just a catch-up in case that one HTTP call ever fails (network blip, cold start, etc.), so it only
+-- needs to run once a minute, not every 5.
 select cron.schedule(
   'hh-push-dispatch',
-  '*/5 * * * *',
+  '* * * * *',
   $$
   select net.http_post(
     url := 'https://aklchxzpfiuqrwzehqig.supabase.co/functions/v1/push-dispatch',

@@ -40,6 +40,7 @@ export interface Profile {
   full_name: string;
   phone: string | null;
   must_change_password: boolean;
+  name_set: boolean;
   locale: 'en' | 'hi';
   welcomed_at: string | null;
   vehicle_prompt_at?: string | null;
@@ -817,6 +818,16 @@ export interface MemberRow {
   created_at: string;
   deactivated_reason: string | null;
   profiles: { full_name: string; phone: string | null; must_change_password: boolean } | null;
+}
+
+export interface NotificationOptInRow {
+  user_id: string;
+  name: string;
+  unit_code: string | null;
+  unit_name: string | null;
+  role: Role;
+  push_opt_in: boolean | null;
+  device_count: number;
 }
 
 export interface AlertRow {

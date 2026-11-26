@@ -22,7 +22,10 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
 export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported'> {
   if (!pushSupported()) return 'unsupported';
   const perm = await Notification.requestPermission();
-  if (perm !== 'granted') return 'denied';
+  if (perm !== 'granted') {
+    if (perm === 'denied') markPushBlocked();
+    return 'denied';
+  }
   const reg = await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
@@ -64,6 +67,15 @@ export async function refreshPushRegistration(): Promise<void> {
   } catch {
     /* best effort */
   }
+}
+
+/**
+ * Once a browser is blocked, no button can ever re-trigger the native permission prompt again —
+ * that's a platform rule, not something this app controls. Call this when that state is detected
+ * so the admin report shows a real "Off" instead of "Not decided".
+ */
+export function markPushBlocked(): void {
+  void rpc('set_push_opt_in', { p_value: false }).catch(() => undefined);
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;

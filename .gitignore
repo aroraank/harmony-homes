@@ -11,3 +11,7 @@ test-results
 .DS_Store
 supabase/.temp
 supabase/.branches
+
+# Vite writes one of these each time it loads the config in SSR mode (e.g. during build) -- junk.
+*.timestamp-*.mjs
+*.timestamp-*.cjs

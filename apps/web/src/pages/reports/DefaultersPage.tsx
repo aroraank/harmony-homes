@@ -40,7 +40,7 @@ export default function DefaultersPage() {
       <PageHeader
         title={t('Pending list')}
         subtitle={
-          m.isAdmin ? t('Flats with overdue dues, highest first') : t("Your flat's overdue dues, if any")
+          t('Flats with overdue dues, highest first')
         }
         back="/reports"
       />
@@ -50,12 +50,8 @@ export default function DefaultersPage() {
           d.length ? null : (
             <EmptyState
               icon={<PartyPopper className="size-7" />}
-              title={m.isAdmin ? t('No overdue dues') : t("You're all paid up")}
-              hint={
-                m.isAdmin
-                  ? t('Every flat is up to date.')
-                  : t('Nothing pending on your flat right now — this list will show any due you miss.')
-              }
+              title={t('No overdue dues')}
+              hint={t('Every flat is up to date.')}
             />
           )
         }

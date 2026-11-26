@@ -1,5 +1,5 @@
 import { PhoneInput } from '@/components/PhoneInput';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -11,6 +11,7 @@ import {
   MoreVertical,
   Pencil,
   Printer,
+  UploadCloud,
   UserMinus,
   UserPlus,
   Users,
@@ -25,7 +26,7 @@ import { unwrap, useUnits } from '@/lib/queries';
 import { brand } from '@/brand';
 import { PageHeader } from '@/components/PageHeader';
 import { buildZip } from '@/lib/zip';
-import { downloadBlob } from '@/lib/csv';
+import { downloadBlob, parseCsv } from '@/lib/csv';
 import { EmptyState, QueryState } from '@/components/States';
 import { Field } from '@/components/Field';
 import { ConfirmSheet } from '@/components/ConfirmSheet';
@@ -44,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { NotificationOptInPanel } from '@/components/NotificationOptInPanel';
 import type { MemberRow, Role } from '@/types';
 
 type Row = MemberRow & { units: { code: string; display_name: string } | null };
@@ -64,6 +66,9 @@ export default function MembersPage() {
   const [staffOpen, setStaffOpen] = useState(false);
   const [viewFor, setViewFor] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
+  const [nameUploadBusy, setNameUploadBusy] = useState(false);
+  const [nameUploadResult, setNameUploadResult] = useState<{ updated: number; errors: { unit_code: string; error: string }[] } | null>(null);
+  const nameFileRef = useRef<HTMLInputElement | null>(null);
 
   const q = useQuery({
     queryKey: ['members', m.societyId],
@@ -110,6 +115,56 @@ export default function MembersPage() {
   };
 
   if (!m.can('manage_users')) return <EmptyState title={t('You do not have permission to do this.')} />;
+
+  const nameCsvTemplate = () => {
+    downloadBlob(
+      'harmony-homes-names-template.csv',
+      new Blob(['\ufeffplot number,first name,last name,phone\n1,Ramesh,Kumar,9876500001\n'], { type: 'text/csv;charset=utf-8' }),
+    );
+  };
+
+  /** Admin's bulk "Excel" list (really CSV -- open it in Excel, Save As CSV to export): plot number,
+   *  first name, last name, phone. Matches each row to that unit's resident login and fills the name in,
+   *  same as the member doing it themselves. */
+  const onNameCsv = async (file: File) => {
+    setNameUploadBusy(true);
+    setNameUploadResult(null);
+    try {
+      const text = await file.text();
+      const grid = parseCsv(text);
+      if (grid.length < 2) throw new Error(t('That file has no rows to import.'));
+      const header = grid[0].map((h) => h.trim().toLowerCase());
+      const col = (...names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
+      const cPlot = col('plot', 'unit', 'flat', 'code');
+      const cFirst = col('first');
+      const cLast = col('last');
+      const cPhone = col('phone', 'mobile', 'contact');
+      if (cPlot < 0 || cFirst < 0 || cLast < 0) {
+        throw new Error(t('Could not find plot number / first name / last name columns in the header row.'));
+      }
+      const rows = grid
+        .slice(1)
+        .map((r) => ({
+          unit_code: (r[cPlot] ?? '').trim(),
+          full_name: `${(r[cFirst] ?? '').trim()} ${(r[cLast] ?? '').trim()}`.trim(),
+          phone: cPhone >= 0 ? (r[cPhone] ?? '').trim() || null : null,
+        }))
+        .filter((r) => r.unit_code);
+      if (!rows.length) throw new Error(t('No usable rows found.'));
+      const res = await rpc<{ updated: number; errors: { unit_code: string; error: string }[] }>(
+        'admin_bulk_set_names',
+        { p_society: m.societyId, p_rows: rows },
+      );
+      setNameUploadResult(res);
+      if (res.updated) toast.success(t('{{n}} names updated', { n: res.updated }));
+      if (res.errors.length) toast.error(t('{{n}} rows could not be matched', { n: res.errors.length }));
+      refresh();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setNameUploadBusy(false);
+    }
+  };
 
   const bulkCreate = async () => {
     setBusy(true);
@@ -218,6 +273,8 @@ export default function MembersPage() {
             {t('Requests')} {pending.length > 0 && <Badge variant="danger">{pending.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="old">{t('Old')}</TabsTrigger>
+          <TabsTrigger value="names">{t('Names')}</TabsTrigger>
+          <TabsTrigger value="notifications">{t('Notifications')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="active">
@@ -384,6 +441,51 @@ export default function MembersPage() {
               ))}
             </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="names">
+          <Alert variant="info" className="mb-3">
+            {t(
+              "Upload a list (plot number, first name, last name, phone) to fill in every flat's real name in one go -- same as a resident entering their own name. Export it from Excel as CSV first.",
+            )}
+          </Alert>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={nameCsvTemplate}>
+              <Download /> {t('Download CSV template')}
+            </Button>
+            <input
+              ref={nameFileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onNameCsv(f);
+                e.target.value = '';
+              }}
+            />
+            <Button loading={nameUploadBusy} onClick={() => nameFileRef.current?.click()}>
+              <UploadCloud /> {t('Upload CSV')}
+            </Button>
+          </div>
+          {nameUploadResult && (
+            <Card className="mt-3 p-3 text-sm">
+              <p className="font-semibold text-credit">{t('{{n}} names updated', { n: nameUploadResult.updated })}</p>
+              {nameUploadResult.errors.length > 0 && (
+                <ul className="mt-2 space-y-1 text-muted-foreground">
+                  {nameUploadResult.errors.map((e, i) => (
+                    <li key={i}>
+                      {e.unit_code}: {e.error}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="notifications">
+          <NotificationOptInPanel societyId={m.societyId} />
         </TabsContent>
       </Tabs>
 

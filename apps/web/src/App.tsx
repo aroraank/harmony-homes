@@ -12,6 +12,7 @@ import HomePage from './pages/HomePage';
 const RecurringPage = lazy(() => import('./pages/events/RecurringPage'));
 // Self-registration is disabled: new residents are added by the admin, not via /register.
 const ChangePasswordPage = lazy(() => import('./pages/auth/ChangePasswordPage'));
+const SetNamePage = lazy(() => import('./pages/auth/SetNamePage'));
 const NoAccessPage = lazy(() => import('./pages/auth/NoAccessPage'));
 const SetupNeededPage = lazy(() => import('./pages/auth/SetupNeededPage'));
 const VerifyReceiptPage = lazy(() => import('./pages/public/VerifyReceiptPage'));
@@ -80,6 +81,10 @@ function Protected() {
     );
   if (ctx?.profile?.must_change_password)
     return <Navigate to="/change-password" replace state={{ from: loc.pathname }} />;
+  // Forced once per flat login until a real name is entered -- admins/super-admins are exempt, same as
+  // the vehicle-registration popups (they aren't "a flat" in the same sense).
+  if (ctx?.profile && ctx.profile.name_set === false && active?.role === 'resident')
+    return <Navigate to="/set-name" replace state={{ from: loc.pathname }} />;
   // A gate (security guard) login is not a member: it only ever sees the gate screen.
   if (!active && ctx?.guard)
     return (
@@ -124,6 +129,14 @@ export default function App() {
         element={
           <Lazy>
             <ChangePasswordPage />
+          </Lazy>
+        }
+      />
+      <Route
+        path="/set-name"
+        element={
+          <Lazy>
+            <SetNamePage />
           </Lazy>
         }
       />

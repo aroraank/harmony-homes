@@ -14,6 +14,7 @@ import type {
   Unit,
   UnitType,
   ContactCategory,
+  NotificationOptInRow,
 } from '@/types';
 
 /** Throw a friendly error from a PostgREST response */
@@ -160,6 +161,14 @@ export function useNotifications(enabled = true) {
       unwrap<AppNotification[]>(
         await supabase.from('notifications').select('id, kind, ref_id, title, body, url, created_at, read_at').order('created_at', { ascending: false }).limit(60),
       ),
+  });
+}
+
+export function useNotificationOptInReport(societyId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['notificationOptIn', societyId],
+    enabled: enabled && !!societyId,
+    queryFn: () => rpc<NotificationOptInRow[]>('notification_opt_in_report', { p_society: societyId }),
   });
 }
 

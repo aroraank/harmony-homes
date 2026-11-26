@@ -24,6 +24,8 @@ import { cn } from '@/lib/utils';
 import { NoticeGate } from './NoticeGate';
 import { WelcomeDialog } from '../WelcomeDialog';
 import { VehiclePrompt } from '../VehiclePrompt';
+import { VehicleApprovalAlarm } from '../VehicleApprovalAlarm';
+import { NotificationEnableDialog } from '../NotificationEnableDialog';
 import { FeeChangeDialog } from '../FeeChangeDialog';
 import { ExpenseDueDialog } from '../ExpenseDue';
 import { WelcomeBackToast } from '../WelcomeBackToast';
@@ -195,10 +197,12 @@ export function AppShell() {
         </ul>
       </nav>
 
+      {!viewOnly && <NotificationEnableDialog />}
       {!viewOnly && <WelcomeDialog />}
       {!viewOnly && <WelcomeBackToast />}
       {!viewOnly && <FeeChangeDialog />}
       {!viewOnly && <VehiclePrompt />}
+      {!viewOnly && <VehicleApprovalAlarm societyId={m.societyId} />}
       {!viewOnly && <ExpenseDueDialog />}
       {!viewOnly && <NoticeGate />}
     </div>

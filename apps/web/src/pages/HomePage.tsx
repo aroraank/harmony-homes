@@ -4,7 +4,7 @@ import { CollectionsList } from '@/components/CollectionsList';
 import { SeriesMonthCard } from '@/components/SeriesMonthCard';
 import { SocietyPositionCompact, usePosition } from '@/components/SocietyPosition';
 import { SurplusBoard } from '@/components/SurplusBoard';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -39,7 +39,7 @@ import { reportPdf } from '@/lib/pdf';
 import { downloadBlob } from '@/lib/csv';
 import { useAuth, useMember } from '@/lib/auth';
 import { unwrap, useContactCategories, useDashboard, useNextMeeting, useSettings } from '@/lib/queries';
-import { enablePush, pushSupported } from '@/lib/push';
+import { markPushBlocked, pushSupported } from '@/lib/push';
 import { useInstallPrompt } from '@/lib/install';
 import { InstallHelp } from '@/components/InstallHelp';
 import { getLocal, setLocal } from '@/lib/storage';
@@ -1032,20 +1032,31 @@ function FeedbackNudge() {
   );
 }
 
-/** Push + install prompts, dismissible and remembered on this device */
+// "Not now" only snoozes — notifications matter (gate approvals), so it comes back instead of
+// disappearing forever until the resident actually decides (allow or block). Blocked devices are
+// nudged daily since fixing it only takes one of them tapping "Allow" in their phone's settings.
+const BLOCKED_SNOOZE_MS = 24 * 60 * 60 * 1000;
+
+/** Push + install prompts. Install can be dismissed for good; the push prompt only snoozes. */
 function EnableExtras() {
   const { t } = useTranslation();
   const install = useInstallPrompt();
-  const [dismissed, setDismissed] = useState(() => getLocal('hh-extras-dismissed') === '1');
-  const [busy, setBusy] = useState(false);
+  const [installDismissed, setInstallDismissed] = useState(() => getLocal('hh-extras-dismissed') === '1');
+  const [snoozedUntil, setSnoozedUntil] = useState(() => Number(getLocal('hh-push-snooze') ?? 0));
   const status = useQuery({
     queryKey: ['pushPermission'],
     queryFn: () => (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'),
     staleTime: Infinity,
   });
-  const showPush = pushSupported() && status.data === 'default';
-  const showInstall = !isStandalone() && (install.available || isIOS());
-  if (dismissed || (!showPush && !showInstall)) return null;
+  // The 'default' (never-decided) case is now a forced modal (NotificationEnableDialog) shown on every
+  // app open -- not left to this dismissible card. Once blocked, no button can ever re-open the native
+  // permission prompt -- that's a platform rule -- so this card keeps nagging (snoozed, not hidden forever).
+  const showBlocked = pushSupported() && status.data === 'denied' && Date.now() > snoozedUntil;
+  const showInstall = !installDismissed && !isStandalone() && (install.available || isIOS());
+  useEffect(() => {
+    if (status.data === 'denied') markPushBlocked();
+  }, [status.data]);
+  if (!showInstall && !showBlocked) return null;
   return (
     <Card className="border-primary/30 bg-gradient-to-br from-secondary to-card p-4">
       <div className="flex items-start gap-3">
@@ -1053,17 +1064,27 @@ function EnableExtras() {
           <BellRing className="size-5" />
         </span>
         <div className="flex-1">
-          <p className="font-bold">{t('Get notices and receipts instantly')}</p>
+          <p className="font-bold">
+            {showBlocked ? t('Notifications are blocked for this device') : t('Get notices and receipts instantly')}
+          </p>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
-            {isIOSNonSafari() && !isStandalone()
-              ? t(
-                  'On iPhone, please install from Safari: tap ⋯ or the address bar, choose "Open in Safari", then tap Share → "Add to Home Screen". Chrome on iPhone cannot install apps — this is an Apple restriction.',
-                )
-              : isIOS() && !isStandalone()
+            {showBlocked
+              ? isIOS()
                 ? t(
-                    'On iPhone: tap Share, then "Add to Home Screen". Open Harmony from your home screen to turn on notifications.',
+                    'Open iPhone Settings → scroll down to find "Harmony Homes" → turn on Allow Notifications. Then come back and tap below.',
                   )
-                : t('Install the app and allow notifications on this phone.')}
+                : t(
+                    'Tap the lock or ⓘ icon next to the address bar (or, if installed, your phone\'s App info for Harmony Homes) → Notifications → Allow. Then come back and tap below.',
+                  )
+              : isIOSNonSafari() && !isStandalone()
+                ? t(
+                    'On iPhone, please install from Safari: tap ⋯ or the address bar, choose "Open in Safari", then tap Share → "Add to Home Screen". Chrome on iPhone cannot install apps — this is an Apple restriction.',
+                  )
+                : isIOS() && !isStandalone()
+                  ? t(
+                      'On iPhone: tap Share, then "Add to Home Screen". Open Harmony from your home screen to turn on notifications.',
+                    )
+                  : t('Install the app and allow notifications on this phone.')}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {showInstall && install.available && (
@@ -1071,32 +1092,22 @@ function EnableExtras() {
                 <Download /> {t('Install app')}
               </Button>
             )}
-            {showPush && (
-              <Button
-                size="sm"
-                variant={showInstall && install.available ? 'outline' : 'default'}
-                loading={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  const r = await enablePush().catch(() => 'denied' as const);
-                  setBusy(false);
-                  void status.refetch();
-                  if (r === 'granted') toast.success(t('Notifications are on for this device'));
-                  else
-                    toast.error(
-                      t('Notifications were blocked. You can allow them in your browser settings.'),
-                    );
-                }}
-              >
-                <BellRing /> {t('Allow notifications')}
+            {showBlocked && (
+              <Button size="sm" onClick={() => void status.refetch()}>
+                <BellRing /> {t("I've allowed it — check again")}
               </Button>
             )}
             <Button
               size="sm"
               variant="ghost"
               onClick={() => {
-                setLocal('hh-extras-dismissed', '1');
-                setDismissed(true);
+                if (showInstall) setLocal('hh-extras-dismissed', '1');
+                if (showBlocked) {
+                  const until = Date.now() + BLOCKED_SNOOZE_MS;
+                  setLocal('hh-push-snooze', String(until));
+                  setSnoozedUntil(until);
+                }
+                setInstallDismissed(true);
               }}
             >
               {t('Not now')}

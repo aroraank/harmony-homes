@@ -21,7 +21,7 @@ import { useAuth, useMember } from '@/lib/auth';
 import { errorMessage, rpc } from '@/lib/supabase';
 import { setLanguage } from '@/lib/i18n';
 import { useTheme, type ThemePref } from '@/lib/theme';
-import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push';
+import { currentSubscription, disablePush, enablePush, markPushBlocked, pushSupported } from '@/lib/push';
 import { cn, deviceLabel, isIOS, isStandalone } from '@/lib/utils';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { InstallHelp } from '@/components/InstallHelp';
@@ -57,7 +57,11 @@ export default function ProfilePage() {
     void currentSubscription().then((s) =>
       setPushOn(!!s && typeof Notification !== 'undefined' && Notification.permission === 'granted'),
     );
+    // No button can ever re-open the native permission prompt once blocked — flag it so the
+    // admin's Notifications report shows a real "Off" instead of "Not decided".
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') markPushBlocked();
   }, []);
+  const pushBlocked = typeof Notification !== 'undefined' && Notification.permission === 'denied';
 
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => rpc<Session[]>('my_sessions') });
 
@@ -228,11 +232,23 @@ export default function ProfilePage() {
             </span>
             <Switch
               checked={!!pushOn}
-              disabled={pushBusy || pushOn === null}
+              disabled={pushBusy || pushOn === null || pushBlocked}
               onCheckedChange={(v) => void togglePush(v)}
             />
           </label>
-        ) : (
+        ) : null}
+        {pushBlocked && (
+          <p className="mt-3 text-[12.5px] text-muted-foreground">
+            {isIOS()
+              ? t(
+                  'Blocked on this device. Open iPhone Settings → scroll down to "Harmony Homes" → turn on Allow Notifications, then come back here.',
+                )
+              : t(
+                  'Blocked on this device. Tap the lock or ⓘ icon next to the address bar (or, if installed, your phone\'s App info for Harmony Homes) → Notifications → Allow, then come back here.',
+                )}
+          </p>
+        )}
+        {!pushSupported() && !pushBlocked && (
           <p className="text-sm text-muted-foreground">
             {isIOS() && !isStandalone()
               ? t(
