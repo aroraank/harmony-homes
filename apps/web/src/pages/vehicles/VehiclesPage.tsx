@@ -21,6 +21,7 @@ import { errorMessage, rpc } from '@/lib/supabase';
 import { useUnits } from '@/lib/queries';
 import { useVehicles } from '@/lib/vehicleGate';
 import { GateVisitLogList } from '@/components/GateVisitLogList';
+import { VehicleApprovalBanner } from '@/components/VehicleApprovalBanner';
 import { ApprovalSpeedFunFact, ApprovalSpeedReport } from '@/components/VehicleApprovalSpeed';
 import { PageHeader, SectionTitle } from '@/components/PageHeader';
 import { EmptyState, QueryState } from '@/components/States';
@@ -287,6 +288,10 @@ export default function VehiclesPage() {
           </Button>
         }
       />
+
+      {/* Some notification-click paths land here rather than on /vehicles/approve/:id,
+          so the pending approval must be actionable from this page too. */}
+      <VehicleApprovalBanner societyId={m.societyId} />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
