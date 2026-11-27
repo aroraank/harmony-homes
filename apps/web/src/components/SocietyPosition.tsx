@@ -163,7 +163,16 @@ export function SocietyPosition({
         </div>
         {shownFunds.map((f) => (
           <div key={f.id} className="px-4 py-3">
-            <p className="mb-1 break-words text-sm font-semibold">{f.name}</p>
+            {f.event_id ? (
+              <Link
+                to={`/events/${f.event_id}`}
+                className="mb-1 flex items-center gap-1 break-words text-sm font-semibold text-primary hover:underline"
+              >
+                {f.name} <ChevronRight className="size-3.5 shrink-0" />
+              </Link>
+            ) : (
+              <p className="mb-1 break-words text-sm font-semibold">{f.name}</p>
+            )}
             <div className="grid grid-cols-3 gap-2">
               <Stat label={t('Balance')} v={f.balance_paise} />
               <Stat label={t('Yet to collect')} v={f.pending_paise} />
@@ -212,7 +221,16 @@ export function SocietyPosition({
                     .filter((f) => f.scope_label === g.label)
                     .map((f) => (
                       <div key={f.id}>
-                        <p className="mt-2 break-words text-[12.5px] font-semibold">{f.name}</p>
+                        {f.event_id ? (
+                          <Link
+                            to={`/events/${f.event_id}`}
+                            className="mt-2 flex items-center gap-1 break-words text-[12.5px] font-semibold text-primary hover:underline"
+                          >
+                            {f.name} <ChevronRight className="size-3.5 shrink-0" />
+                          </Link>
+                        ) : (
+                          <p className="mt-2 break-words text-[12.5px] font-semibold">{f.name}</p>
+                        )}
                         <FundReceipt f={f} b={bmap.get(f.id)} society={m.society_name} />
                       </div>
                     ))}

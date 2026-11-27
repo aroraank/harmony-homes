@@ -71,6 +71,9 @@ export default function EventDetailPage() {
   const e = r.event;
   const canManage = m.can('manage_events');
   const net = r.collected_paise - r.spent_paise;
+  const pendingUnits = r.units.filter((u) => u.status === 'pending');
+  const partialUnits = r.units.filter((u) => u.status === 'partial');
+  const restUnits = r.units.filter((u) => u.status !== 'pending' && u.status !== 'partial');
 
   const run = async () => {
     setBusy(true);
@@ -368,8 +371,56 @@ export default function EventDetailPage() {
       >
         {t('Flats')}
       </SectionTitle>
+
+      {pendingUnits.length > 0 && (
+        <>
+          <SectionTitle>{t('Yet to pay ({{n}})', { n: pendingUnits.length })}</SectionTitle>
+          <Card className="divide-y">
+            {pendingUnits.map((u) => (
+              <UnitLink
+                key={u.unit_id}
+                unitId={u.unit_id}
+                className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-secondary/50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="tabular font-bold">{u.unit_code}</p>
+                  <p className="truncate text-[12.5px] text-muted-foreground">{u.unit_name}</p>
+                </div>
+                <p className="tabular shrink-0 text-sm font-extrabold text-warning">
+                  {formatINR(u.due_paise)}
+                </p>
+              </UnitLink>
+            ))}
+          </Card>
+        </>
+      )}
+
+      {partialUnits.length > 0 && (
+        <>
+          <SectionTitle>{t('Partially paid ({{n}})', { n: partialUnits.length })}</SectionTitle>
+          <Card className="divide-y">
+            {partialUnits.map((u) => (
+              <UnitLink
+                key={u.unit_id}
+                unitId={u.unit_id}
+                className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-secondary/50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="tabular font-bold">{u.unit_code}</p>
+                  <p className="truncate text-[12.5px] text-muted-foreground">{u.unit_name}</p>
+                </div>
+                <p className="tabular shrink-0 text-sm font-extrabold">
+                  <span className="text-credit">{formatINR(u.paid_paise)}</span>
+                  <span className="text-muted-foreground"> / {formatINR(u.due_paise)}</span>
+                </p>
+              </UnitLink>
+            ))}
+          </Card>
+        </>
+      )}
+
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {r.units.map((u) => (
+        {restUnits.map((u) => (
           <UnitLink
             key={u.unit_id}
             unitId={u.unit_id}

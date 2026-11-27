@@ -12,8 +12,10 @@ import {
   AlertTriangle,
   ArrowRight,
   BadgeCheck,
+  BellOff,
   BellRing,
   CalendarClock,
+  CheckCircle2,
   Car,
   ChevronRight,
   ClipboardList,
@@ -39,7 +41,7 @@ import { reportPdf } from '@/lib/pdf';
 import { downloadBlob } from '@/lib/csv';
 import { useAuth, useMember } from '@/lib/auth';
 import { unwrap, useContactCategories, useDashboard, useNextMeeting, useSettings } from '@/lib/queries';
-import { markPushBlocked, pushSupported } from '@/lib/push';
+import { enablePush, markPushBlocked, pushSupported } from '@/lib/push';
 import { useInstallPrompt } from '@/lib/install';
 import { InstallHelp } from '@/components/InstallHelp';
 import { getLocal, setLocal } from '@/lib/storage';
@@ -98,6 +100,7 @@ export default function HomePage() {
     <div className="space-y-4 animate-fade-up">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">{t('Namaste, {{n}} Ji', { n: firstName })}</h1>
+        {!viewOnly && <NotificationStatusChip />}
       </div>
 
       {!viewOnly && <VehicleApprovalBanner societyId={m.societyId} />}
@@ -962,6 +965,84 @@ function FeedbackNudge() {
         </div>
       </div>
     </Card>
+  );
+}
+
+/**
+ * A small, always-visible status — never dismissible or snoozed — so a resident always knows at a
+ * glance whether gate/vehicle-approval notifications will actually reach this device, instead of
+ * finding out only when one fails to arrive. Lives right under the greeting, every page load.
+ */
+function NotificationStatusChip() {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const status = useQuery({
+    queryKey: ['pushPermission'],
+    queryFn: () => (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'),
+    staleTime: 0,
+  });
+  useEffect(() => {
+    const onFocus = () => void status.refetch();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!pushSupported()) return null;
+  const state = status.data;
+
+  const enable = async () => {
+    setBusy(true);
+    try {
+      const r = await enablePush();
+      if (r === 'granted') toast.success(t('Notifications are on'));
+      if (r === 'denied') setShowHelp(true);
+      void status.refetch();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (state === 'granted') {
+    return (
+      <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-emerald-700 dark:text-emerald-400">
+        <CheckCircle2 className="size-3.5" /> {t('Notifications are on for this device')}
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => (state === 'denied' ? setShowHelp((v) => !v) : void enable())}
+        disabled={busy}
+        className={
+          state === 'denied'
+            ? 'flex items-center gap-1.5 text-[12.5px] font-bold text-red-600 underline decoration-dotted dark:text-red-400'
+            : 'flex items-center gap-1.5 text-[12.5px] font-bold text-amber-700 underline decoration-dotted dark:text-amber-400'
+        }
+      >
+        <BellOff className="size-3.5" />
+        {state === 'denied' ? t('Notifications are blocked — tap to fix') : t('Notifications are off — tap to enable')}
+      </button>
+      {showHelp && state === 'denied' && (
+        <p className="mt-1.5 max-w-[42ch] text-[12px] text-muted-foreground">
+          {isIOS()
+            ? t('Open iPhone Settings → "Harmony Homes" → turn on Allow Notifications, then come back here.')
+            : t('Tap the lock/ⓘ icon next to the address bar (or your phone's App info for Harmony Homes) → Notifications → Allow, then come back here.')}{' '}
+          <button type="button" className="font-bold underline" onClick={() => void status.refetch()}>
+            {t("I've allowed it — check again")}
+          </button>
+        </p>
+      )}
+    </div>
   );
 }
 

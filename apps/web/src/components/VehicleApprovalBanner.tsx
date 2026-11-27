@@ -51,7 +51,7 @@ export function VehicleApprovalBanner({ societyId }: { societyId: string }) {
                 {v.plate_text}
               </p>
               <p className="truncate text-[12.5px] font-semibold text-amber-800/80 dark:text-amber-300/80">
-                {t('Guest vehicle waiting for your OK')}
+                {t('Guard will not let the vehicle in without your approval')}
               </p>
             </div>
           </div>
