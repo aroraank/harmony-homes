@@ -18,15 +18,28 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
   return (await reg?.pushManager.getSubscription()) ?? null;
 }
 
+/**
+ * Wait for the service worker to be ready, but don't hang forever: right after a fresh
+ * install the SW has to download and precache the whole app before it's "active", which
+ * can stall on a slow or flaky connection. Nudge it along and give up after a while so the
+ * caller can show a retry instead of spinning indefinitely.
+ */
+async function waitForServiceWorker(timeoutMs = 20_000): Promise<ServiceWorkerRegistration | null> {
+  void navigator.serviceWorker.getRegistration().then((reg) => reg?.update()).catch(() => undefined);
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+  return Promise.race([navigator.serviceWorker.ready, timeout]);
+}
+
 /** Ask permission (must be called from a tap) and register this device for Web Push. */
-export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported'> {
+export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported' | 'pending'> {
   if (!pushSupported()) return 'unsupported';
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') {
     if (perm === 'denied') markPushBlocked();
     return 'denied';
   }
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await waitForServiceWorker();
+  if (!reg) return 'pending';
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
     sub = await reg.pushManager.subscribe({

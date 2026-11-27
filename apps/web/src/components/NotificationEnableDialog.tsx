@@ -27,6 +27,7 @@ export function NotificationEnableDialog() {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [justBlocked, setJustBlocked] = useState(false);
+  const [stillSettingUp, setStillSettingUp] = useState(false);
   const status = useQuery({
     queryKey: ['pushPermission'],
     queryFn: () => (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'),
@@ -39,6 +40,7 @@ export function NotificationEnableDialog() {
 
   const enable = async () => {
     setBusy(true);
+    setStillSettingUp(false);
     try {
       const r = await enablePush();
       void qc.invalidateQueries({ queryKey: ['pushPermission'] });
@@ -47,6 +49,8 @@ export function NotificationEnableDialog() {
       } else if (r === 'denied') {
         markPushBlocked();
         setJustBlocked(true);
+      } else if (r === 'pending') {
+        setStillSettingUp(true);
       }
     } catch {
       toast.error(t('Could not turn on notifications. Please try again.'));
@@ -76,9 +80,13 @@ export function NotificationEnableDialog() {
               ? t(
                   'Your phone blocked the request. Open your browser/phone Settings → Notifications → allow Harmony Homes, then reopen the app.',
                 )
-              : t(
-                  'Gate approvals, payment reminders and notices only reach you if notifications are on. Please allow it now.',
-                )}
+              : stillSettingUp
+                ? t(
+                    'Still finishing setup on a fresh install — this can take a moment on a new or slow connection. Please try again.',
+                  )
+                : t(
+                    'Gate approvals, payment reminders and notices only reach you if notifications are on. Please allow it now.',
+                  )}
           </DialogDescription>
         </div>
         <div className="mt-5 flex flex-col gap-2">

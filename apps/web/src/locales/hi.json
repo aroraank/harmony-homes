@@ -1562,5 +1562,6 @@
   "…and {{n}} more": "…और {{n}}",
   "These people have not made payment yet": "इन्होंने अभी पेमेंट नहीं की",
   "Payment not made yet": "अभी भुगतान नहीं हुआ",
-  "No payments yet.": "अभी तक कोई भुगतान नहीं।"
+  "No payments yet.": "अभी तक कोई भुगतान नहीं।",
+  "Still finishing setup on a fresh install — this can take a moment on a new or slow connection. Please try again.": "नई इंस्टॉल के बाद सेटअप अभी पूरा हो रहा है — नए या धीमे कनेक्शन पर इसमें थोड़ा समय लग सकता है। कृपया फिर से प्रयास करें।"
 }
