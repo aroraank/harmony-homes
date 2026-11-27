@@ -53,7 +53,10 @@ export default defineConfig({
     }),
   ],
   resolve: {
-    alias: { '@': path.resolve(__dirname, 'src') },
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+      '@harmony/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+    },
   },
   server: { port: 5173, host: true },
   build: {

@@ -1036,7 +1036,7 @@ function NotificationStatusChip() {
         <p className="mt-1.5 max-w-[42ch] text-[12px] text-muted-foreground">
           {isIOS()
             ? t('Open iPhone Settings → "Harmony Homes" → turn on Allow Notifications, then come back here.')
-            : t('Tap the lock/ⓘ icon next to the address bar (or your phone's App info for Harmony Homes) → Notifications → Allow, then come back here.')}{' '}
+            : t("Tap the lock/ⓘ icon next to the address bar (or your phone's App info for Harmony Homes) → Notifications → Allow, then come back here.")}{' '}
           <button type="button" className="font-bold underline" onClick={() => void status.refetch()}>
             {t("I've allowed it — check again")}
           </button>
