@@ -459,7 +459,7 @@ export interface MonthReport {
     fund: string;
     category: string;
   }[];
-  units: ({ unit_id: string; unit_code: string; unit_name: string } & PeriodStatus)[];
+  units: ({ unit_id: string; unit_code: string; unit_name: string; phone?: string | null } & PeriodStatus)[];
   extra_payers: { unit_id: string; unit_code: string; extra_paise: number }[];
 }
 
@@ -550,6 +550,7 @@ export interface EventReport {
     unit_id: string;
     unit_code: string;
     unit_name: string;
+    phone?: string | null;
     expected: boolean;
     exclusion_reason: string | null;
     due_id: string | null;

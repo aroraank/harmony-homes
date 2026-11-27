@@ -9,6 +9,7 @@ import {
   FileText,
   IndianRupee,
   Pencil,
+  Phone,
   PlayCircle,
   Receipt,
   Trash2,
@@ -33,7 +34,6 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { EventDocuments } from '@/components/EventDocuments';
 import { UnitLink } from '@/components/UnitLink';
 import { AmountInput } from '@/components/AmountInput';
 import { Input } from '@/components/ui/input';
@@ -175,21 +175,25 @@ export default function EventDetailPage() {
       `event-${e.title.replace(/\W+/g, '-').toLowerCase()}.csv`,
       [
         'Flat',
+        'Name',
         'Expected',
         'Reason excluded',
         'Due (Rs)',
         'Paid (Rs)',
         'Status',
+        'Note',
         'Paid extra (Rs)',
         'Receipt nos',
       ],
       r.units.map((u) => [
         u.unit_code,
+        u.unit_name,
         u.expected ? 'yes' : 'no',
         u.exclusion_reason,
         rupees(u.due_paise),
         rupees(u.paid_paise),
         u.status,
+        u.status === 'pending' ? 'Payment not made yet' : '',
         rupees(u.extra_paise),
         r.entries
           .filter(
@@ -223,12 +227,14 @@ export default function EventDetailPage() {
         {
           title: 'Flats',
           table: {
-            head: ['Flat', 'Due', 'Paid', 'Status'],
+            head: ['Flat', 'Name', 'Due', 'Paid', 'Status', 'Note'],
             body: r.units.map((u) => [
               u.unit_code,
+              u.unit_name,
               pdfINR(u.due_paise),
               pdfINR(u.paid_paise),
               u.expected ? u.status : `excluded: ${u.exclusion_reason ?? ''}`,
+              u.status === 'pending' ? 'Payment not made yet' : '',
             ]),
           },
         },
@@ -355,8 +361,6 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      <EventDocuments eventId={e.id} societyId={e.society_id} canManage={canManage} />
-
       <SectionTitle
         action={
           <div className="flex gap-1">
@@ -375,18 +379,24 @@ export default function EventDetailPage() {
       {pendingUnits.length > 0 && (
         <>
           <SectionTitle>{t('Yet to pay ({{n}})', { n: pendingUnits.length })}</SectionTitle>
-          <Card className="divide-y">
+          <p className="mb-2 text-sm font-semibold text-red-600">{t('These people have not made payment yet')}</p>
+          <Card className="divide-y border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40">
             {pendingUnits.map((u) => (
               <UnitLink
                 key={u.unit_id}
                 unitId={u.unit_id}
-                className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-secondary/50"
+                className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-red-100 dark:hover:bg-red-900/30"
               >
                 <div className="min-w-0 flex-1">
                   <p className="tabular font-bold">{u.unit_code}</p>
-                  <p className="truncate text-[12.5px] text-muted-foreground">{u.unit_name}</p>
+                  <p className="truncate text-[12.5px] text-foreground">{u.unit_name}</p>
+                  {m.isAdmin && u.phone && (
+                    <p className="flex items-center gap-1 text-[12px] text-muted-foreground">
+                      <Phone className="size-3" /> {u.phone}
+                    </p>
+                  )}
                 </div>
-                <p className="tabular shrink-0 text-sm font-extrabold text-warning">
+                <p className="tabular shrink-0 text-sm font-extrabold text-red-600">
                   {formatINR(u.due_paise)}
                 </p>
               </UnitLink>
@@ -407,7 +417,12 @@ export default function EventDetailPage() {
               >
                 <div className="min-w-0 flex-1">
                   <p className="tabular font-bold">{u.unit_code}</p>
-                  <p className="truncate text-[12.5px] text-muted-foreground">{u.unit_name}</p>
+                  <p className="truncate text-[12.5px] text-foreground">{u.unit_name}</p>
+                  {m.isAdmin && u.phone && (
+                    <p className="flex items-center gap-1 text-[12px] text-muted-foreground">
+                      <Phone className="size-3" /> {u.phone}
+                    </p>
+                  )}
                 </div>
                 <p className="tabular shrink-0 text-sm font-extrabold">
                   <span className="text-credit">{formatINR(u.paid_paise)}</span>
@@ -432,6 +447,12 @@ export default function EventDetailPage() {
             <div className="flex items-center justify-between">
               <span className="tabular font-bold">{u.unit_code}</span>
             </div>
+            <p className="mt-0.5 truncate text-[12px] text-foreground">{u.unit_name}</p>
+            {m.isAdmin && u.phone && (
+              <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Phone className="size-3" /> {u.phone}
+              </p>
+            )}
             <div className="mt-1.5">
               <StatusChip status={u.status} />
             </div>

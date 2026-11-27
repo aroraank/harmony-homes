@@ -1559,5 +1559,8 @@
   "{{title}} of {{a}} is waiting for you. Tap \"Mark as paid\" to record it; it is deducted from the society balance and all members are told.": "{{title}} ({{a}}) आपके चिह्नित करने की प्रतीक्षा में है। दर्ज करने के लिए \"भुगतान हुआ\" दबाएँ; यह सोसाइटी के बैलेंस से कटेगा और सभी सदस्यों को सूचना जाएगी।",
   "{{title}} — {{month}}": "{{title}} — {{month}}",
   "{{t}} only": "केवल {{t}}",
-  "…and {{n}} more": "…और {{n}}"
+  "…and {{n}} more": "…और {{n}}",
+  "These people have not made payment yet": "इन्होंने अभी पेमेंट नहीं की",
+  "Payment not made yet": "अभी भुगतान नहीं हुआ",
+  "No payments yet.": "अभी तक कोई भुगतान नहीं।"
 }

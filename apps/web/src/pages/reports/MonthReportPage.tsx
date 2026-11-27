@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Download, FileText, Lock, LockOpen, Share2 } from 'lucide-react';
+import { Download, FileText, Lock, LockOpen, Phone, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   addMonths,
@@ -112,20 +112,24 @@ export default function MonthReportPage() {
       `month-${period}.csv`,
       [
         'Flat',
+        'Name',
         'Status',
         'Due (Rs)',
         'Paid towards this month (Rs)',
         'Pending (Rs)',
         'Advance held (Rs)',
+        'Note',
         'Receipt nos (received this month)',
       ],
       r.units.map((u) => [
         u.unit_code,
+        u.unit_name,
         u.status,
         rupees(u.due_paise),
         rupees(u.paid_paise),
         rupees(u.pending_paise),
         rupees(u.advance_paise),
+        u.status === 'pending' ? 'Payment not made yet' : '',
         r.payments
           .filter((p) => p.unit_code === u.unit_code)
           .map((p) => p.receipt_no)
@@ -192,12 +196,14 @@ export default function MonthReportPage() {
         {
           title: 'Pending / partial',
           table: {
-            head: ['Flat', 'Due', 'Paid', 'Pending'],
+            head: ['Flat', 'Name', 'Due', 'Paid', 'Pending', 'Note'],
             body: pendingUnits.map((u) => [
               u.unit_code,
+              u.unit_name,
               pdfINR(u.due_paise),
               pdfINR(u.paid_paise),
               pdfINR(u.pending_paise),
+              u.status === 'pending' ? 'Payment not made yet' : '',
             ]),
           },
         },
@@ -381,10 +387,10 @@ export default function MonthReportPage() {
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="pending">
-                  <UnitGrid units={pendingUnits} show="pending" />
+                  <UnitGrid units={pendingUnits} show="pending" isAdmin={m.isAdmin} />
                 </TabsContent>
                 <TabsContent value="paid">
-                  <UnitGrid units={paidUnits} show="paid" />
+                  <UnitGrid units={paidUnits} show="paid" isAdmin={m.isAdmin} />
                 </TabsContent>
                 <TabsContent value="extra">
                   {r.extra_payers.length === 0 ? (
@@ -517,7 +523,7 @@ function Line({
   );
 }
 
-function UnitGrid({ units, show }: { units: MonthReport['units']; show: 'pending' | 'paid' }) {
+function UnitGrid({ units, show, isAdmin }: { units: MonthReport['units']; show: 'pending' | 'paid'; isAdmin: boolean }) {
   const { t } = useTranslation();
   if (!units.length)
     return (
@@ -537,6 +543,12 @@ function UnitGrid({ units, show }: { units: MonthReport['units']; show: 'pending
             <span className="tabular whitespace-nowrap font-bold">{u.unit_code}</span>
             <StatusChip status={u.status} />
           </div>
+          <p className="truncate text-[12.5px] text-foreground">{u.unit_name}</p>
+          {isAdmin && u.phone && (
+            <p className="flex items-center gap-1 text-[12px] text-muted-foreground">
+              <Phone className="size-3" /> {u.phone}
+            </p>
+          )}
           <p className="tabular mt-1.5 text-[12.5px] text-muted-foreground">
             {show === 'pending' ? (
               <>
