@@ -51,15 +51,24 @@ async function waitForServiceWorker(timeoutMs = 20_000): Promise<ServiceWorkerRe
  * with no way to tell what actually stalled.
  */
 export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported'> {
-  if (!pushSupported()) return 'unsupported';
+  if (!pushSupported()) {
+    console.log('[push] unsupported on this browser');
+    return 'unsupported';
+  }
+  console.log('[push] requesting Notification permission...');
   const perm = await Notification.requestPermission();
+  console.log('[push] permission result:', perm);
   if (perm !== 'granted') {
     if (perm === 'denied') markPushBlocked();
     return 'denied';
   }
+  console.log('[push] waiting for service worker to be ready...');
   const reg = await waitForServiceWorker();
+  console.log('[push] service worker ready, scope:', reg.scope);
   let sub = await reg.pushManager.getSubscription();
+  console.log('[push] existing subscription:', sub ? sub.endpoint : 'none');
   if (!sub) {
+    console.log('[push] calling pushManager.subscribe()...');
     // On some networks (carrier/firewall blocking Google's push service) this call can hang
     // indefinitely rather than reject — give it a hard ceiling so we get a real error instead.
     sub = await withTimeout(
@@ -70,8 +79,10 @@ export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported'
       20_000,
       'push service registration',
     );
+    console.log('[push] subscribed:', sub.endpoint);
   }
   const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+  console.log('[push] saving subscription to server...');
   await withTimeout(
     rpc('save_push_subscription', {
       p_endpoint: json.endpoint,
@@ -82,6 +93,7 @@ export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported'
     15_000,
     'saving device to server',
   );
+  console.log('[push] done — notifications enabled');
   return 'granted';
 }
 

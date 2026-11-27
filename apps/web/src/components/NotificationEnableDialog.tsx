@@ -56,6 +56,7 @@ export function NotificationEnableDialog() {
       // registration") instead of a generic message — that's the only way to tell what's
       // actually stuck (slow install vs. a network/firewall blocking Google's push service
       // vs. our own server) rather than guessing again next time.
+      console.error('[push] enablePush failed:', err);
       setStuckReason(errorMessage(err));
       toast.error(t('Could not turn on notifications. Please try again.'));
     } finally {
