@@ -18,20 +18,39 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
   return (await reg?.pushManager.getSubscription()) ?? null;
 }
 
+class PushTimeoutError extends Error {
+  constructor(stage: string) {
+    super(`Timed out waiting for: ${stage}`);
+    this.name = 'PushTimeoutError';
+  }
+}
+
+/** Reject with a clear "timed out at X" error instead of leaving a promise to hang forever silently. */
+function withTimeout<T>(promise: Promise<T>, ms: number, stage: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new PushTimeoutError(stage)), ms)),
+  ]);
+}
+
 /**
  * Wait for the service worker to be ready, but don't hang forever: right after a fresh
  * install the SW has to download and precache the whole app before it's "active", which
  * can stall on a slow or flaky connection. Nudge it along and give up after a while so the
  * caller can show a retry instead of spinning indefinitely.
  */
-async function waitForServiceWorker(timeoutMs = 20_000): Promise<ServiceWorkerRegistration | null> {
+async function waitForServiceWorker(timeoutMs = 20_000): Promise<ServiceWorkerRegistration> {
   void navigator.serviceWorker.getRegistration().then((reg) => reg?.update()).catch(() => undefined);
-  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
-  return Promise.race([navigator.serviceWorker.ready, timeout]);
+  return withTimeout(navigator.serviceWorker.ready, timeoutMs, 'service worker install');
 }
 
-/** Ask permission (must be called from a tap) and register this device for Web Push. */
-export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported' | 'pending'> {
+/**
+ * Ask permission (must be called from a tap) and register this device for Web Push.
+ * Every network-dependent step has its own timeout so a stuck step raises a specific,
+ * catchable error (via PushTimeoutError) instead of leaving the caller spinning forever
+ * with no way to tell what actually stalled.
+ */
+export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported'> {
   if (!pushSupported()) return 'unsupported';
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') {
@@ -39,21 +58,30 @@ export async function enablePush(): Promise<'granted' | 'denied' | 'unsupported'
     return 'denied';
   }
   const reg = await waitForServiceWorker();
-  if (!reg) return 'pending';
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
-    sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
-    });
+    // On some networks (carrier/firewall blocking Google's push service) this call can hang
+    // indefinitely rather than reject — give it a hard ceiling so we get a real error instead.
+    sub = await withTimeout(
+      reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+      }),
+      20_000,
+      'push service registration',
+    );
   }
   const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-  await rpc('save_push_subscription', {
-    p_endpoint: json.endpoint,
-    p_p256dh: json.keys.p256dh,
-    p_auth: json.keys.auth,
-    p_label: deviceLabel(),
-  });
+  await withTimeout(
+    rpc('save_push_subscription', {
+      p_endpoint: json.endpoint,
+      p_p256dh: json.keys.p256dh,
+      p_auth: json.keys.auth,
+      p_label: deviceLabel(),
+    }),
+    15_000,
+    'saving device to server',
+  );
   return 'granted';
 }
 
